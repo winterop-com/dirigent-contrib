@@ -1,0 +1,41 @@
+# Bring a dataset into the open climate service, over the instance's configured extent.
+#
+# climate.ingest posts /ingestions with Prefer: respond-async, so the service queues the work
+# and answers 202 with the job to follow; the step probes /ingestions/jobs/{id} every 30s and
+# streams its progress into the run. `overwrite` fetches time steps already held again, and
+# `publish` makes the dataset visible to every reader once it is in.
+#
+# An ingestion downloads from the dataset's source -- CHIRPS, ERA5-Land -- and can take hours
+# for a long range, so the step's timeout is generous. A read-only instance refuses it.
+#
+#   dg run --local examples/climate/climate-ingest.yaml
+
+format: dirigent/v1
+kind: pipeline
+code: climate-ingest
+name: Ingest a climate dataset
+description: Create or update a managed dataset in the open climate service, and follow the job to the end.
+
+tags: [climate]
+
+requires:
+  blocks:
+    - climate.ingest
+
+connections:
+  climate-local:
+    name: Local open climate service
+    kind: climate
+    description: An open climate service run locally, on its default port, writable.
+    config:
+      base_url: http://localhost:9000
+
+steps:
+  ingest:
+    block: climate.ingest
+    timeout: 12h
+    config:
+      connection: climate-local
+      dataset_id: chirps3_precipitation_daily
+      start: "2024-01-01"
+      publish: true

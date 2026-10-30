@@ -1,0 +1,93 @@
+[project]
+name = "dirigent-contrib"
+version = "0.27.1"
+description = "The workspace the dirigent-contrib block packs are built, tested and documented in."
+requires-python = ">=3.13"
+dependencies = [
+    "dirigent-chap",
+    "dirigent-climate",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+dirigent-chap = { workspace = true }
+dirigent-climate = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "dirigent-testing==0.27.1",
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.7",
+    "mypy>=1.19",
+    "pymdown-extensions>=11.0.2",
+    "pyright>=1.1",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pyyaml>=6",
+    "ruff>=0.16",
+    "types-pyyaml>=6",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
+pythonpath = ["packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
+markers = [
+    "live: reaches a real Chap or open climate service; opt in with DIRIGENT_LIVE=1 and the URLs it names",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+src = ["packages/dirigent-chap/src", "packages/dirigent-climate/src", "packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "D", "SIM", "UP", "B", "TID"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["D103", "D100", "D101", "D102", "D104"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "chapserver",
+    "climateserver",
+    "dirigent_chap",
+    "dirigent_climate",
+    "dirigent_common",
+    "dirigent_plugin",
+    "dirigent_testing",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+# Run once per package: each package's tests carry a conftest of their own, and one mypy run
+# over both would see two modules named conftest.
+[tool.mypy]
+python_version = "3.13"
+disallow_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_equality = true
+plugins = ["pydantic.mypy"]
+mypy_path = ["packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+include = ["packages"]
+extraPaths = ["packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
+reportMissingTypeStubs = false

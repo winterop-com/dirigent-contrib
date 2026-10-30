@@ -1,0 +1,54 @@
+# Compute the endemic channel for a dataset: the band an outbreak is read against.
+#
+# chap.thresholds posts /v1/analytics/thresholds and answers at once. params selects the
+# strategy by its `type` and carries that strategy's own parameters as Chap spells them:
+# `percentile` is the WHO endemic channel, a percentile of the same season over the most
+# recent complete years; `seasonal` is the seasonal mean plus a number of standard deviations.
+# A line parameter takes a list, and each entry is one threshold line, so [0.25, 0.75] is the
+# lower and upper edge of the channel. GET /v1/analytics/thresholds/strategies lists every
+# strategy a server has.
+#
+# The periods are written at the dataset's own frequency. A dataset with no disease_cases, or
+# no complete year to compute a baseline from, is a refusal.
+#
+#   dg run --local examples/chap/chap-thresholds.yaml -p dataset_id=1
+
+format: dirigent/v1
+kind: pipeline
+code: chap-thresholds
+name: Compute the endemic channel
+description: Compute the lower and upper edge of the endemic channel for a stored Chap dataset.
+
+tags: [chap]
+
+requires:
+  blocks:
+    - chap.thresholds
+
+params:
+  type: object
+  required: [dataset_id]
+  properties:
+    dataset_id:
+      type: integer
+      description: The stored dataset whose history the channel is computed from.
+
+connections:
+  chap-local:
+    name: Local Chap
+    kind: chap
+    description: A chap-core server started with docker compose up, on its default port, without auth.
+    config:
+      base_url: http://localhost:8000
+
+steps:
+  channel:
+    block: chap.thresholds
+    config:
+      connection: chap-local
+      dataset_id: "${params.dataset_id}"
+      period_ids: ["2025-01", "2025-02", "2025-03"]
+      params:
+        type: percentile
+        quantile: [0.25, 0.75]
+        baselineYears: 5

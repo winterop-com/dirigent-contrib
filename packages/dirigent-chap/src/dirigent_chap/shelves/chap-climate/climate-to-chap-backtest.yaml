@@ -1,0 +1,132 @@
+# Aggregate climate data to org units, import it into Chap with the case counts, and backtest.
+#
+# This is the whole climate-and-health loop, three systems and one document:
+#
+#   rainfall  climate.aggregate runs the open climate service's aggregate_to_chap_csv
+#             workflow: daily rainfall, summed inside each org unit and written one row per
+#             location and month -- time_period, location, and one column per variable, the
+#             wide CSV Chap reads. Output: uri, and text while the CSV is small enough to inline.
+#   reload    storage.read reads the CSV back from storage as text, whatever its size, so the
+#             next step does not depend on the instance's inline limit.
+#   dataset   chap.dataset.import unfolds the CSV into one observation per cell and sends it
+#             beside the case counts, which arrive as a parameter. on_rejected: fail validates
+#             first, so a location Chap would refuse fails the run before anything is stored.
+#   backtest  chap.backtest.run evaluates a model on the dataset the import stored.
+#
+# Each feature's `id` in the GeoJSON is the org unit's uid, and is what both services key the
+# rows by: the CSV's location, and the orgUnit of every case count. The same FeatureCollection
+# goes to both, which is why it is a parameter rather than written twice.
+#
+# The aggregation reads the public demo of the open climate service, which is read-only to
+# this document; the dataset and the backtest are written to a local Chap.
+#
+#   dg run --local examples/chap-climate/climate-to-chap-backtest.yaml -p cases=@cases.json
+#
+# TO MAKE IT YOURS: a copy names `climate-demo` and `chap-local` under requires.connections
+# rather than carrying them, so create a `climate` and a `chap` connection under those codes,
+# pass your org units' GeoJSON as `org_units` and your monthly case counts as `cases`, and pick
+# the dataset and the model the backtest should use.
+
+format: dirigent/v1
+kind: pipeline
+code: climate-to-chap-backtest
+name: Climate to Chap backtest
+description: Aggregate rainfall to org units, import it into Chap beside the case counts, and backtest a model on it.
+
+tags: [chap, climate, starter]
+
+requires:
+  blocks:
+    - climate.aggregate
+    - storage.read
+    - chap.dataset.import
+    - chap.backtest.run
+
+params:
+  type: object
+  properties:
+    start:
+      type: string
+      default: "2024-01-01"
+      description: The first day of climate data to aggregate.
+    end:
+      type: string
+      default: "2025-12-31"
+      description: The last day of climate data to aggregate.
+    model_id:
+      type: string
+      default: naive_model
+      description: The configured Chap model to backtest.
+    org_units:
+      type: object
+      description: The org units as a GeoJSON FeatureCollection, each feature's id the org unit's uid.
+      default:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            id: OU1
+            properties: {}
+            geometry:
+              type: Polygon
+              coordinates: [[[102.5, 18.0], [102.7, 18.0], [102.7, 18.2], [102.5, 18.2], [102.5, 18.0]]]
+    cases:
+      type: array
+      description: Monthly case counts, as {period, orgUnit, value, featureName} with featureName disease_cases.
+      default:
+        - {period: "2024-01", orgUnit: OU1, featureName: disease_cases, value: 12}
+
+connections:
+  climate-demo:
+    name: Open climate service demo
+    kind: climate
+    description: The public demo of the open climate service, with CHIRPS and ERA5-Land published over Laos.
+    config:
+      base_url: https://climate-demo.dhis2.org/ocs
+  chap-local:
+    name: Local Chap
+    kind: chap
+    description: A chap-core server started with docker compose up, on its default port, without auth.
+    config:
+      base_url: http://localhost:8000
+
+steps:
+  rainfall:
+    block: climate.aggregate
+    config:
+      connection: climate-demo
+      workflow: aggregate_to_chap_csv
+      dataset_id: chirps3_precipitation_daily
+      start: "${params.start}"
+      end: "${params.end}"
+      geometries: "${params.org_units}"
+      method: sum
+      period_type: month
+
+  reload:
+    block: storage.read
+    depends_on: [rainfall]
+    config:
+      source: "${steps.rainfall.output.uri}"
+      content_type: text/csv
+      max_size: 16mb
+
+  dataset:
+    block: chap.dataset.import
+    depends_on: [reload]
+    config:
+      connection: chap-local
+      name: "rainfall and cases ${params.start} to ${params.end}"
+      geojson: "${params.org_units}"
+      csv: "${steps.reload.output.text}"
+      provided_data: "${params.cases}"
+      on_rejected: fail
+
+  backtest:
+    block: chap.backtest.run
+    depends_on: [dataset]
+    timeout: 6h
+    config:
+      connection: chap-local
+      name: "${params.model_id} on rainfall and cases"
+      model_id: "${params.model_id}"
+      dataset_id: "${steps.dataset.output.dataset_id}"

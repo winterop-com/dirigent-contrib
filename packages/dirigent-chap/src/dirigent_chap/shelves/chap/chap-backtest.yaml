@@ -1,0 +1,58 @@
+# Backtest a configured model on a dataset Chap already holds.
+#
+# chap.backtest.run submits /v1/analytics/create-backtest and follows the evaluation job at
+# /v1/jobs/{id} until it settles; the output is the stored backtest as Chap describes it, with
+# its aggregateMetrics lifted out for the next step to read.
+#
+# Only the model and the dataset are written here. Every parameter left out -- n_periods,
+# n_splits, stride, n_retrain, future_weather_provider, target_column -- takes the defaults the
+# server has saved for the dataset's period type, which is what Chap's own UI does. Write one
+# to override it for this run.
+#
+# A backtest trains the model once per split, so it takes minutes to hours: the step's timeout
+# says how long this run is prepared to wait, and the engine probes every 30s meanwhile
+# without holding a worker.
+#
+#   dg run --local examples/chap/chap-backtest.yaml -p dataset_id=1 -p model_id=naive_model
+
+format: dirigent/v1
+kind: pipeline
+code: chap-backtest
+name: Backtest a Chap model
+description: Run a backtest of one configured model on one stored dataset and read its metrics.
+
+tags: [chap]
+
+requires:
+  blocks:
+    - chap.backtest.run
+
+params:
+  type: object
+  required: [dataset_id]
+  properties:
+    dataset_id:
+      type: integer
+      description: The stored dataset to evaluate on, as chap.dataset.import outputs it.
+    model_id:
+      type: string
+      default: naive_model
+      description: The configured model to evaluate, by its name; chap-models.yaml lists them.
+
+connections:
+  chap-local:
+    name: Local Chap
+    kind: chap
+    description: A chap-core server started with docker compose up, on its default port, without auth.
+    config:
+      base_url: http://localhost:8000
+
+steps:
+  backtest:
+    block: chap.backtest.run
+    timeout: 6h
+    config:
+      connection: chap-local
+      name: "backtest of ${params.model_id}"
+      model_id: "${params.model_id}"
+      dataset_id: "${params.dataset_id}"

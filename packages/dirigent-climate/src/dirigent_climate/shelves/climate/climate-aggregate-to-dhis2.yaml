@@ -1,0 +1,77 @@
+# Aggregate a climate dataset to org units, as a DHIS2 dataValueSet.
+#
+# climate.aggregate posts a process graph to /result and waits for the answer. Naming
+# aggregate_to_dhis2_json is the whole graph: the service loads the dataset over the dates
+# given, reduces the pixels inside each org unit with `method`, and writes the values as a
+# dataValueSet through a named export the instance configures -- the export owns the data
+# element, the category option combos and the period type, so the document does not.
+#
+# Each feature's `id` in `geometries` must be the org unit's DHIS2 uid: it becomes the orgUnit
+# of every data value. DHIS2 serves its own org units in this shape at
+# /api/organisationUnits.geojson.
+#
+# The output lands in storage under the run's scratch either way, and a small one is in
+# `value` as well, ready for dhis2.data_value_set_import; a large one is read back from `uri`
+# with storage.read. A long range over many org units takes minutes, which is what `timeout`
+# is for.
+#
+#   dg run --local examples/climate/climate-aggregate-to-dhis2.yaml
+#
+# The export named here must be one the instance's climate-service.yaml declares under
+# `exports`; ask its operator which, or run aggregate_by_features for a result no export
+# shapes.
+
+format: dirigent/v1
+kind: pipeline
+code: climate-aggregate-to-dhis2
+name: Aggregate climate to a dataValueSet
+description: Aggregate daily rainfall to org units with the open climate service, as a DHIS2 dataValueSet.
+
+tags: [climate]
+
+requires:
+  blocks:
+    - climate.aggregate
+
+params:
+  type: object
+  properties:
+    start:
+      type: string
+      default: "2025-01-01"
+      description: The first day to aggregate.
+    end:
+      type: string
+      default: "2025-01-31"
+      description: The last day to aggregate.
+
+connections:
+  climate-demo:
+    name: Open climate service demo
+    kind: climate
+    description: The public demo of the open climate service, with CHIRPS and ERA5-Land published over Laos.
+    config:
+      base_url: https://climate-demo.dhis2.org/ocs
+
+steps:
+  aggregate:
+    block: climate.aggregate
+    timeout: 10m
+    config:
+      connection: climate-demo
+      workflow: aggregate_to_dhis2_json
+      dataset_id: chirps3_precipitation_daily
+      start: "${params.start}"
+      end: "${params.end}"
+      export: rainfall-daily
+      method: mean
+      timeout: 10m
+      geometries:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            id: OU1
+            properties: {}
+            geometry:
+              type: Polygon
+              coordinates: [[[102.5, 18.0], [102.7, 18.0], [102.7, 18.2], [102.5, 18.2], [102.5, 18.0]]]
