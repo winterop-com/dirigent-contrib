@@ -17,11 +17,11 @@ configured as it is, and carries the connections it uses, each with a name and a
 
 | Document | The operation |
 | --- | --- |
-| `climate-datasets` | List the published datasets, with their period types and extents. |
-| `climate-aggregate-to-dhis2` | Aggregate daily rainfall to org units as a DHIS2 dataValueSet, synchronously. |
-| `climate-batch-and-export` | The same as a batch job, then the service's own delivery to DHIS2 as a dry run. A starter. |
-| `climate-ingest` | Create or update a managed dataset. |
-| `climate-sync` | Bring a managed dataset forward to its source's newest data. |
+| `climate-datasets` | List the datasets the open climate service has published. |
+| `climate-aggregate-to-dhis2` | Aggregate daily rainfall to org units as a set of DHIS2 data values. |
+| `climate-batch-and-export` | Aggregate climate data in a batch job, then rehearse sending it to DHIS2. A starter. |
+| `climate-ingest` | Bring a dataset into the open climate service and follow the job to the end. |
+| `climate-sync` | Bring a climate dataset up to date with the newest data from its source. |
 
 The documents that only read carry `climate-demo`, the public demo. The ones that write carry
 `climate-local`, a service you run yourself, because the demo is shared.

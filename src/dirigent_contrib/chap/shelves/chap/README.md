@@ -11,11 +11,11 @@ server that sets it wants the token on the connection; every block sends it as
 
 | File | The operation |
 | --- | --- |
-| [chap-models.yaml](chap-models.yaml) | List the configured models a backtest names. |
-| [chap-import-dataset-dry-run.yaml](chap-import-dataset-dry-run.yaml) | Validate observations as a dry run and read the rejections. |
-| [chap-backtest.yaml](chap-backtest.yaml) | Backtest a model on a stored dataset, with the server's saved defaults. |
-| [chap-predict-and-read.yaml](chap-predict-and-read.yaml) | Forecast from a prediction setup, then read its quantiles. |
-| [chap-thresholds.yaml](chap-thresholds.yaml) | Compute the endemic channel for a stored dataset. |
+| [chap-models.yaml](chap-models.yaml) | List the models a Chap server has configured. |
+| [chap-import-dataset-dry-run.yaml](chap-import-dataset-dry-run.yaml) | Send observations to Chap as a dry run and read which ones it would reject. |
+| [chap-backtest.yaml](chap-backtest.yaml) | Backtest one Chap model on a stored dataset and read its metrics. |
+| [chap-predict-and-read.yaml](chap-predict-and-read.yaml) | Forecast with a Chap prediction setup and read the forecast at three quantiles. |
+| [chap-thresholds.yaml](chap-thresholds.yaml) | Compute the endemic channel's lower and upper edge for a stored Chap dataset. |
 
 The climate-and-health loop, which reads the open climate service before it writes to Chap,
 is on its own shelf: [`../chap-climate/`](../chap-climate). The alert review, which waits on
