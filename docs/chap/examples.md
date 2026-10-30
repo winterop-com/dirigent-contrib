@@ -49,7 +49,7 @@ open climate service; the dataset and the backtest are written to the local Chap
 
 ## `chap-dhis2/`: alerts reviewed in Chap, sent through DHIS2
 
-`chap-predict-alert-review-import` is [alert verification](index.md#alert-verification) end to
+`chap-predict-alert-review-notify` is [alert verification](index.md#alert-verification) end to
 end. `chap.prediction.run` forecasts and `chap.prediction.read` reads the 0.9 quantile;
 `transform.jq` turns every cell that reaches the threshold into an alert, and
 `chap.alerts.record` records them against the policy, each `pending`. `chap.alerts.reviewed`
