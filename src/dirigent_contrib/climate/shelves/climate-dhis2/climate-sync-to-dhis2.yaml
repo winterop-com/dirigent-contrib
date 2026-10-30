@@ -32,7 +32,11 @@ format: dirigent/v1
 kind: pipeline
 code: climate-sync-to-dhis2
 name: Sync, aggregate and import into DHIS2
-description: Sync a climate dataset, aggregate it to org units as a batch job, and import the dataValueSet into DHIS2.
+description: |
+  Sync a climate dataset, aggregate it to org units, and import it into DHIS2.
+
+  The aggregation runs as a batch job, and the result is imported as a dataValueSet. As written
+  the import is a dry run.
 
 tags: [climate, dhis2, starter]
 

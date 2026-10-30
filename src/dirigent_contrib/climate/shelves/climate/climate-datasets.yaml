@@ -15,7 +15,10 @@ format: dirigent/v1
 kind: pipeline
 code: climate-datasets
 name: List the climate datasets
-description: Read the datasets the open climate service has published, with their period types and extents.
+description: |
+  List the datasets the open climate service has published.
+
+  Each one comes with its period type and extents.
 
 tags: [climate]
 

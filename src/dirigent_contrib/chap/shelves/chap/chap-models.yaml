@@ -16,7 +16,10 @@ format: dirigent/v1
 kind: pipeline
 code: chap-models
 name: List Chap's configured models
-description: Read the models a Chap server has configured, which backtests and prediction setups name.
+description: |
+  List the models a Chap server has configured.
+
+  Backtests and prediction setups name one of these models.
 
 tags: [chap]
 
