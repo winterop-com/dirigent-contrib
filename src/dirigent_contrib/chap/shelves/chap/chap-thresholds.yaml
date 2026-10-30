@@ -17,7 +17,7 @@ format: dirigent/v1
 kind: pipeline
 code: chap-thresholds
 name: Compute the endemic channel
-description: Compute the lower and upper edge of the endemic channel for a stored Chap dataset.
+description: Compute the endemic channel's lower and upper edge for a stored Chap dataset.
 
 tags: [chap]
 

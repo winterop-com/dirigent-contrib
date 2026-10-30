@@ -25,7 +25,10 @@ format: dirigent/v1
 kind: pipeline
 code: climate-aggregate-to-dhis2
 name: Aggregate climate to a dataValueSet
-description: Aggregate daily rainfall to org units with the open climate service, as a DHIS2 dataValueSet.
+description: |
+  Aggregate daily rainfall to org units as a set of DHIS2 data values.
+
+  The open climate service does the aggregation, and the result is a DHIS2 dataValueSet.
 
 tags: [climate]
 

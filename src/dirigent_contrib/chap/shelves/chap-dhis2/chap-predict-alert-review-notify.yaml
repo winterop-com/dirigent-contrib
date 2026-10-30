@@ -48,7 +48,11 @@ format: dirigent/v1
 kind: pipeline
 code: chap-predict-alert-review-notify
 name: Forecast, review the alerts, notify the districts
-description: Forecast with Chap, record the alerts the forecast breaches, wait for their review in Chap, and message each district with an approved alert.
+description: |
+  Forecast with Chap, wait for alerts to be reviewed, then message the districts.
+
+  The alerts the forecast breaches are recorded in Chap and reviewed there, and each district
+  with an approved alert gets a message.
 
 tags: [chap, dhis2, alerts, starter]
 

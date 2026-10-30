@@ -25,7 +25,11 @@ format: dirigent/v1
 kind: pipeline
 code: climate-batch-and-export
 name: Batch aggregate and deliver
-description: Run a DHIS2 aggregation as an openEO batch job, then deliver its saved export as a dry run.
+description: |
+  Aggregate climate data in a batch job, then rehearse sending it to DHIS2.
+
+  The DHIS2 aggregation runs as an openEO batch job, and its saved export is delivered as a dry
+  run.
 
 tags: [climate, starter]
 

@@ -24,7 +24,10 @@ format: dirigent/v1
 kind: pipeline
 code: chap-predict-and-read
 name: Forecast and read the quantiles
-description: Run a Chap prediction setup on fresh observations, then read its forecast at three quantiles.
+description: |
+  Forecast with a Chap prediction setup and read the forecast at three quantiles.
+
+  The setup runs on fresh observations passed in as a parameter.
 
 tags: [chap, starter]
 

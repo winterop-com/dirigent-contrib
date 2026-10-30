@@ -19,7 +19,10 @@ format: dirigent/v1
 kind: pipeline
 code: chap-backtest
 name: Backtest a Chap model
-description: Run a backtest of one configured model on one stored dataset and read its metrics.
+description: |
+  Backtest one Chap model on a stored dataset and read its metrics.
+
+  The model is one Chap has configured, and the dataset is one it already holds.
 
 tags: [chap]
 

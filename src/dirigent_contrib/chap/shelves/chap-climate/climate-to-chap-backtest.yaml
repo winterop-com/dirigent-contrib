@@ -31,7 +31,10 @@ format: dirigent/v1
 kind: pipeline
 code: climate-to-chap-backtest
 name: Climate to Chap backtest
-description: Aggregate rainfall to org units, import it into Chap beside the case counts, and backtest a model on it.
+description: |
+  Aggregate rainfall to org units, import it into Chap, and backtest a model.
+
+  The rainfall is imported beside the case counts, and the model is backtested on that dataset.
 
 tags: [chap, climate, starter]
 

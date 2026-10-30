@@ -14,7 +14,10 @@ format: dirigent/v1
 kind: pipeline
 code: climate-sync
 name: Sync a climate dataset
-description: Bring a managed dataset in the open climate service forward to its source's newest data.
+description: |
+  Bring a climate dataset up to date with the newest data from its source.
+
+  The dataset is a managed one in the open climate service.
 
 tags: [climate]
 

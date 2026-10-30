@@ -14,7 +14,10 @@ format: dirigent/v1
 kind: pipeline
 code: climate-ingest
 name: Ingest a climate dataset
-description: Create or update a managed dataset in the open climate service, and follow the job to the end.
+description: |
+  Bring a dataset into the open climate service and follow the job to the end.
+
+  The dataset is a managed one, created or updated by the run.
 
 tags: [climate]
 
