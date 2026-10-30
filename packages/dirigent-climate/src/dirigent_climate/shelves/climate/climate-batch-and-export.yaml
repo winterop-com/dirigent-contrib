@@ -1,0 +1,91 @@
+# Run an aggregation as a batch job, then deliver its saved export to DHIS2 as a dry run.
+#
+# The batch form of the same aggregation: climate.job.run creates an openEO job at /jobs,
+# queues it, and is probed every 15s until the job finishes, so a long range holds no worker
+# while it runs. A job that ends in error fails the step with the job's own log.
+#
+# Run as a batch job, aggregate_to_dhis2_json also writes a delivery manifest, which is what
+# makes the result deliverable: climate.export posts it to /exports/{export_id}, and the
+# service sends the dataValueSet to the DHIS2 instance the export names, with credentials only
+# the service holds. The step waits for the delivery report; a report the target rejected
+# fails the step as a refusal. dry_run asks DHIS2 to validate without writing.
+#
+# A delivery is queued under an Idempotency-Key derived from the run, the step and the
+# attempt, so a worker that re-executes the same attempt finds the delivery it already queued.
+#
+# This writes jobs and deliveries, so it points at a service you run yourself, not the demo.
+#
+#   dg run --local examples/climate/climate-batch-and-export.yaml
+#
+# TO MAKE IT YOURS: a copy names `climate-local` under requires.connections rather than
+# carrying it, so create a `climate` connection under that code, name an export your
+# instance's climate-service.yaml declares, and turn dry_run off once the report reads right.
+
+format: dirigent/v1
+kind: pipeline
+code: climate-batch-and-export
+name: Batch aggregate and deliver
+description: Run a DHIS2 aggregation as an openEO batch job, then deliver its saved export as a dry run.
+
+tags: [climate, starter]
+
+requires:
+  blocks:
+    - climate.job.run
+    - climate.export
+
+params:
+  type: object
+  properties:
+    start:
+      type: string
+      default: "2025-01-01"
+      description: The first day to aggregate.
+    end:
+      type: string
+      default: "2025-12-31"
+      description: The last day to aggregate.
+    export:
+      type: string
+      default: rainfall-daily
+      description: The named export the instance declares, which the job saves through and the delivery sends.
+
+connections:
+  climate-local:
+    name: Local open climate service
+    kind: climate
+    description: An open climate service run locally, on its default port, writable.
+    config:
+      base_url: http://localhost:9000
+
+steps:
+  aggregate:
+    block: climate.job.run
+    timeout: 2h
+    config:
+      connection: climate-local
+      title: "rainfall ${params.start} to ${params.end}"
+      workflow: aggregate_to_dhis2_json
+      dataset_id: chirps3_precipitation_daily
+      start: "${params.start}"
+      end: "${params.end}"
+      export: "${params.export}"
+      geometries:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            id: OU1
+            properties: {}
+            geometry:
+              type: Polygon
+              coordinates: [[[102.5, 18.0], [102.7, 18.0], [102.7, 18.2], [102.5, 18.2], [102.5, 18.0]]]
+
+  deliver:
+    block: climate.export
+    depends_on: [aggregate]
+    timeout: 30m
+    config:
+      connection: climate-local
+      export_id: "${params.export}"
+      job_id: "${steps.aggregate.output.job_id}"
+      dry_run: true

@@ -1,0 +1,38 @@
+# List the datasets the open climate service has published.
+#
+# Every other block names a dataset by its dataset_id, and this is where those come from:
+# climate.datasets.list reads /datasets as JSON and hands on each dataset as the service
+# describes it -- its variable, units, period type, and the spatial and temporal extent it
+# covers. The period type matters downstream: an aggregation runs at the dataset's own
+# resolution, so a daily dataset aggregates to one value per org unit per day unless the
+# workflow sums or averages it to a coarser period.
+#
+# This reads the public demo, which is safe to read from as often as you like.
+#
+#   dg run --local examples/climate/climate-datasets.yaml
+
+format: dirigent/v1
+kind: pipeline
+code: climate-datasets
+name: List the climate datasets
+description: Read the datasets the open climate service has published, with their period types and extents.
+
+tags: [climate]
+
+requires:
+  blocks:
+    - climate.datasets.list
+
+connections:
+  climate-demo:
+    name: Open climate service demo
+    kind: climate
+    description: The public demo of the open climate service, with CHIRPS and ERA5-Land published over Laos.
+    config:
+      base_url: https://climate-demo.dhis2.org/ocs
+
+steps:
+  datasets:
+    block: climate.datasets.list
+    config:
+      connection: climate-demo

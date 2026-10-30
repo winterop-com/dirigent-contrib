@@ -1,0 +1,76 @@
+name: release
+
+# A `v*` tag publishes every package to PyPI by trusted publishing: PyPI verifies the OIDC
+# token GitHub mints for this workflow file and the package's own environment, so no token is
+# stored here. Each package publishes from `pypi-<package>`, which its PyPI project trusts.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: test and build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # setup-uv stopped publishing major tags at v8, so pin the exact version.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      # The tag and every package must agree, or the release would publish a previous version.
+      - name: Check the tag matches every version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          for manifest in pyproject.toml packages/*/pyproject.toml; do
+            version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$manifest" | head -1)
+            [ "$version" = "$tag" ] || { echo "$manifest carries $version, tag says $tag"; exit 1; }
+          done
+
+      # A tag is not a reason to skip the tests: what publishes is what passed.
+      - name: Sync
+        run: uv sync --locked --all-packages
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Build every wheel and sdist
+        run: |
+          for package in dirigent-chap dirigent-climate; do
+            uv build --package "$package" --out-dir "dist/$package"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist
+
+  pypi:
+    name: publish ${{ matrix.package }} to PyPI
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        package: [dirigent-chap, dirigent-climate]
+    environment:
+      name: pypi-${{ matrix.package }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/${{ matrix.package }}

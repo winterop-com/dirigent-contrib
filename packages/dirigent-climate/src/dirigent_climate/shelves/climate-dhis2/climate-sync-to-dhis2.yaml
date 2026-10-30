@@ -1,0 +1,137 @@
+# Sync a climate dataset, aggregate it to org units, and import the values into DHIS2.
+#
+# The nightly a climate-and-health deployment runs, with DHIS2 doing the import itself rather
+# than the open climate service delivering to it:
+#
+#   sync      climate.sync brings the dataset forward to the newest data its source has.
+#   aggregate climate.job.run runs aggregate_to_dhis2_json as a batch job, so a long range
+#             holds no worker; the export it names shapes the values as a dataValueSet.
+#   result    climate.job.result downloads the job's `result` asset -- the dataValueSet --
+#             into the run's storage. Output: uri, and value while it is small enough to inline.
+#   reload    storage.read reads it back as JSON whatever its size, so the import does not
+#             depend on the instance's inline limit.
+#   load      dhis2.data_value_set_import, from the dirigent-dhis2 pack, imports it and fails
+#             the step with the conflicts DHIS2 names.
+#
+# This is the counterpart of climate-batch-and-export.yaml: that one hands the payload to the
+# service's own delivery and its DHIS2 credentials; this one carries it out of the service and
+# imports it with a dhis2 connection the instance holds, so the import summary, its conflicts
+# and the retry policy are this run's.
+#
+# The import is a dry run against the shared DHIS2 play demo, whose org units are not the ones
+# the geometries name; point `dhis2-demo` at your own instance, with geometries whose ids are
+# its org unit uids, before turning dry_run off.
+#
+#   dg run --local examples/climate-dhis2/climate-sync-to-dhis2.yaml
+#
+# TO MAKE IT YOURS: a copy names `climate-local` and `dhis2-demo` under requires.connections
+# rather than carrying them, so create a `climate` and a `dhis2` connection under those codes.
+# The instance needs dirigent-dhis2 installed beside this pack.
+
+format: dirigent/v1
+kind: pipeline
+code: climate-sync-to-dhis2
+name: Sync, aggregate and import into DHIS2
+description: Sync a climate dataset, aggregate it to org units as a batch job, and import the dataValueSet into DHIS2.
+
+tags: [climate, dhis2, starter]
+
+requires:
+  blocks:
+    - climate.sync
+    - climate.job.run
+    - climate.job.result
+    - storage.read
+    - dhis2.data_value_set_import
+
+params:
+  type: object
+  properties:
+    dataset_id:
+      type: string
+      default: era5land_temperature_daily
+      description: The managed dataset to sync and aggregate.
+    start:
+      type: string
+      default: "2025-09-01"
+      description: The first day to aggregate.
+    end:
+      type: string
+      default: "2025-09-30"
+      description: The last day to aggregate.
+    export:
+      type: string
+      default: temperature-daily
+      description: The named export the instance declares, which shapes the values as a dataValueSet.
+
+connections:
+  climate-local:
+    name: Local open climate service
+    kind: climate
+    description: An open climate service run locally, on its default port, writable.
+    config:
+      base_url: http://localhost:9000
+  dhis2-demo:
+    name: DHIS2 play demo
+    kind: dhis2
+    description: The public DHIS2 play demo, with its documented demo login; every import here is a dry run.
+    config:
+      base_url: https://play.dhis2.org/2.43
+      basic_username: admin
+      basic_password: district
+      timeout: 120s
+
+steps:
+  sync:
+    block: climate.sync
+    timeout: 6h
+    config:
+      connection: climate-local
+      dataset_id: "${params.dataset_id}"
+
+  aggregate:
+    block: climate.job.run
+    depends_on: [sync]
+    timeout: 2h
+    config:
+      connection: climate-local
+      title: "${params.dataset_id} ${params.start} to ${params.end}"
+      workflow: aggregate_to_dhis2_json
+      dataset_id: "${params.dataset_id}"
+      start: "${params.start}"
+      end: "${params.end}"
+      export: "${params.export}"
+      method: mean
+      geometries:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            id: OU1
+            properties: {}
+            geometry:
+              type: Polygon
+              coordinates: [[[102.5, 18.0], [102.7, 18.0], [102.7, 18.2], [102.5, 18.2], [102.5, 18.0]]]
+
+  result:
+    block: climate.job.result
+    depends_on: [aggregate]
+    config:
+      connection: climate-local
+      job_id: "${steps.aggregate.output.job_id}"
+
+  reload:
+    block: storage.read
+    depends_on: [result]
+    config:
+      source: "${steps.result.output.uri}"
+      content_type: application/json
+      max_size: 64mb
+
+  load:
+    block: dhis2.data_value_set_import
+    depends_on: [reload]
+    config:
+      connection: dhis2-demo
+      data_values: "${steps.reload.output.value}"
+      import_strategy: CREATE_AND_UPDATE
+      dry_run: true

@@ -1,0 +1,56 @@
+# Validate observations against Chap without importing them.
+#
+# chap.dataset.import with dry_run on sends the observations to /v1/analytics/make-dataset
+# with dryRun=true. Chap validates them synchronously and answers with how many locations it
+# would take and every observation it would reject -- a location missing from the GeoJSON, a
+# covariate with gaps -- and imports nothing. That makes it the step to put in front of a real
+# import while a feed is new.
+#
+# The observations are written the way Chap spells them: period, orgUnit, value and
+# featureName, one row per value. Every feature the model needs is a featureName; the target
+# Chap forecasts is disease_cases unless the backtest says otherwise. OU2 has no polygon in the
+# GeoJSON, so the summary rejects it.
+#
+#   dg run --local examples/chap/chap-import-dataset-dry-run.yaml
+
+format: dirigent/v1
+kind: pipeline
+code: chap-import-dataset-dry-run
+name: Validate a Chap dataset
+description: Send observations to Chap as a dry run and read which ones it would reject.
+
+tags: [chap]
+
+requires:
+  blocks:
+    - chap.dataset.import
+
+connections:
+  chap-local:
+    name: Local Chap
+    kind: chap
+    description: A chap-core server started with docker compose up, on its default port, without auth.
+    config:
+      base_url: http://localhost:8000
+
+steps:
+  validate:
+    block: chap.dataset.import
+    config:
+      connection: chap-local
+      name: rehearsal
+      dry_run: true
+      geojson:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            id: OU1
+            properties: {}
+            geometry:
+              type: Polygon
+              coordinates: [[[102.5, 18.0], [102.7, 18.0], [102.7, 18.2], [102.5, 18.2], [102.5, 18.0]]]
+      provided_data:
+        - {period: "202501", orgUnit: OU1, featureName: disease_cases, value: 12}
+        - {period: "202501", orgUnit: OU1, featureName: rainfall, value: 210.5}
+        - {period: "202501", orgUnit: OU1, featureName: mean_temperature, value: 24.1}
+        - {period: "202501", orgUnit: OU2, featureName: disease_cases, value: 3}

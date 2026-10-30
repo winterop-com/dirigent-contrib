@@ -1,0 +1,39 @@
+# Bring a managed dataset forward to the newest data its source has.
+#
+# climate.sync posts /sync/{dataset_id} with Prefer: respond-async: the service plans the
+# time steps between what it holds and what the source has, queues the fetch, and the step
+# follows the job like an ingestion. Leave `end` unset to sync to the latest available. A
+# sync with nothing to bring in may be answered at once, and the step then ends with that
+# answer rather than a job.
+#
+# This is the step a nightly runs before an aggregation, so the aggregation reads yesterday.
+#
+#   dg run --local examples/climate/climate-sync.yaml
+
+format: dirigent/v1
+kind: pipeline
+code: climate-sync
+name: Sync a climate dataset
+description: Bring a managed dataset in the open climate service forward to its source's newest data.
+
+tags: [climate]
+
+requires:
+  blocks:
+    - climate.sync
+
+connections:
+  climate-local:
+    name: Local open climate service
+    kind: climate
+    description: An open climate service run locally, on its default port, writable.
+    config:
+      base_url: http://localhost:9000
+
+steps:
+  sync:
+    block: climate.sync
+    timeout: 6h
+    config:
+      connection: climate-local
+      dataset_id: era5land_temperature_daily

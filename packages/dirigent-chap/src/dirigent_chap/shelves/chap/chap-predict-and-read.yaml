@@ -1,0 +1,84 @@
+# Forecast from a saved prediction setup, then read the forecast's quantiles.
+#
+# A prediction setup is a backtest Chap was told to keep forecasting with: it fixes the model,
+# the target and the future-weather provider. chap.prediction.run sends it this month's
+# observations at /v1/crud/prediction-setups/{id}/run and follows the forecast job; an unknown
+# setup (404), an archived model (409) and observations Chap cannot use (422) fail the step at
+# once rather than being retried.
+#
+# chap.prediction.read then reads the stored prediction at the quantiles asked for: one entry
+# per period, org unit and quantile, which is the shape a chart or a DHIS2 import is built
+# from. The median and the 80% band around it are the default.
+#
+# The observations come in as a parameter, so the same document forecasts each month with
+# that month's data: -p observations='[...]', rows spelled the way Chap spells them.
+#
+#   dg run --local examples/chap/chap-predict-and-read.yaml -p prediction_setup_id=1
+#
+# TO MAKE IT YOURS: a copy made from this document names `chap-local` under
+# requires.connections rather than carrying it, so create a `chap` connection under that code
+# -- `dg connection create chap chap-local --set base_url=https://chap.example.org --set
+# api_token=...` -- and pass your org units' GeoJSON in place of the one written here.
+
+format: dirigent/v1
+kind: pipeline
+code: chap-predict-and-read
+name: Forecast and read the quantiles
+description: Run a Chap prediction setup on fresh observations, then read its forecast at three quantiles.
+
+tags: [chap, starter]
+
+requires:
+  blocks:
+    - chap.prediction.run
+    - chap.prediction.read
+
+params:
+  type: object
+  required: [prediction_setup_id]
+  properties:
+    prediction_setup_id:
+      type: integer
+      description: The saved prediction setup to forecast with.
+    observations:
+      type: array
+      description: This month's observations, one per value, as {period, orgUnit, value, featureName}.
+      default:
+        - {period: "202509", orgUnit: OU1, featureName: disease_cases, value: 14}
+        - {period: "202509", orgUnit: OU1, featureName: rainfall, value: 180.2}
+        - {period: "202509", orgUnit: OU1, featureName: mean_temperature, value: 25.3}
+
+connections:
+  chap-local:
+    name: Local Chap
+    kind: chap
+    description: A chap-core server started with docker compose up, on its default port, without auth.
+    config:
+      base_url: http://localhost:8000
+
+steps:
+  forecast:
+    block: chap.prediction.run
+    timeout: 2h
+    config:
+      connection: chap-local
+      prediction_setup_id: "${params.prediction_setup_id}"
+      name: monthly forecast
+      provided_data: "${params.observations}"
+      geojson:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            id: OU1
+            properties: {}
+            geometry:
+              type: Polygon
+              coordinates: [[[102.5, 18.0], [102.7, 18.0], [102.7, 18.2], [102.5, 18.2], [102.5, 18.0]]]
+
+  quantiles:
+    block: chap.prediction.read
+    depends_on: [forecast]
+    config:
+      connection: chap-local
+      prediction_id: "${steps.forecast.output.prediction_id}"
+      quantiles: [0.1, 0.5, 0.9]

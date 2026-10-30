@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  package:
+    name: ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [dirigent-chap, dirigent-climate]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          cache-dependency-glob: "**/uv.lock"
+      - name: Sync
+        run: uv sync --locked --all-packages
+      - name: Format
+        run: uv run ruff format --check packages/${{ matrix.package }}
+      - name: Lint
+        run: uv run ruff check packages/${{ matrix.package }}
+      - name: Types (mypy)
+        run: uv run mypy packages/${{ matrix.package }}/src packages/${{ matrix.package }}/tests
+      - name: Types (pyright)
+        run: uv run pyright packages/${{ matrix.package }}
+      - name: Test
+        run: uv run pytest packages/${{ matrix.package }}
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          cache-dependency-glob: "**/uv.lock"
+      - name: Sync
+        run: uv sync --locked --all-packages
+      # --strict fails on any warning, so a broken link is caught here rather than on main.
+      - name: Docs
+        run: uv run mkdocs build --strict
+        env:
+          NO_MKDOCS_2_WARNING: "1"

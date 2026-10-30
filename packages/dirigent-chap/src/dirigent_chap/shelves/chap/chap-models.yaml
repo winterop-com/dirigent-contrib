@@ -1,0 +1,39 @@
+# List the models a Chap server has configured.
+#
+# A backtest and a prediction setup both name a configured model, by its id or its name, and
+# this is where those come from: chap.models.list reads /v1/crud/configured-models and hands on
+# each model exactly as Chap describes it -- its id, name, covariates, target, period type and
+# whether it is archived. Chap owns that shape and changes it between releases, so the block
+# passes it through rather than pinning it.
+#
+# The connection carries no api_token, which is right for `docker compose up` in a chap-core
+# checkout with CHAP_API_TOKEN unset. A server that sets it answers 401 without one; add the
+# token to the connection and every block sends it as `Authorization: Bearer`.
+#
+#   dg run --local examples/chap/chap-models.yaml
+
+format: dirigent/v1
+kind: pipeline
+code: chap-models
+name: List Chap's configured models
+description: Read the models a Chap server has configured, which backtests and prediction setups name.
+
+tags: [chap]
+
+requires:
+  blocks:
+    - chap.models.list
+
+connections:
+  chap-local:
+    name: Local Chap
+    kind: chap
+    description: A chap-core server started with docker compose up, on its default port, without auth.
+    config:
+      base_url: http://localhost:8000
+
+steps:
+  models:
+    block: chap.models.list
+    config:
+      connection: chap-local
