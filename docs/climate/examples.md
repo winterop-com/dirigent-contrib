@@ -9,7 +9,7 @@ dg examples show climate-sync-to-dhis2
 ```
 
 They live in
-[`packages/dirigent-climate/src/dirigent_climate/shelves/`](https://github.com/winterop-com/dirigent-contrib/tree/main/packages/dirigent-climate/src/dirigent_climate/shelves),
+[`src/dirigent_contrib/climate/shelves/`](https://github.com/winterop-com/dirigent-contrib/tree/main/src/dirigent_contrib/climate/shelves),
 on two shelves. Each document opens with a header that says what it does and why it is
 configured as it is, and carries the connections it uses, each with a name and a description.
 
@@ -83,7 +83,7 @@ installed beside this pack.
 ```
 
 The Chap side of the loop, the open climate service feeding a Chap dataset and backtest, is
-`climate-to-chap-backtest` on the [`dirigent-chap` shelves](../chap/examples.md).
+`climate-to-chap-backtest` on the [Chap shelves](../chap/examples.md).
 
 ## How they are tested
 

@@ -9,7 +9,7 @@ dg examples show chap-predict-and-read
 ```
 
 They live in
-[`packages/dirigent-chap/src/dirigent_chap/shelves/`](https://github.com/winterop-com/dirigent-contrib/tree/main/packages/dirigent-chap/src/dirigent_chap/shelves),
+[`src/dirigent_contrib/chap/shelves/`](https://github.com/winterop-com/dirigent-contrib/tree/main/src/dirigent_contrib/chap/shelves),
 on three shelves. Each document opens with a header that says what it does and why it is
 configured as it is, and carries the connections it uses, each with a name and a description.
 
@@ -30,9 +30,9 @@ They carry `chap-local`, a chap-core server on `http://localhost:8000` without a
 `climate-to-chap-backtest` is the climate-and-health loop in one document: `climate.aggregate`
 runs the open climate service's `aggregate_to_chap_csv` workflow, `storage.read` reads the CSV
 back whatever its size, `chap.dataset.import` unfolds it into observations beside the case
-counts and imports them, and `chap.backtest.run` evaluates a model on the dataset. It needs
-`dirigent-climate` installed beside this pack. The aggregation reads the public demo of the
-open climate service; the dataset and the backtest are written to the local Chap.
+counts and imports them, and `chap.backtest.run` evaluates a model on the dataset. Both packs
+are in `dirigent-contrib`, so it needs nothing more installed. The aggregation reads the public
+demo of the open climate service; the dataset and the backtest are written to the local Chap.
 
 ```yaml
   dataset:

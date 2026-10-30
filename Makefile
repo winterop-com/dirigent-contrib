@@ -1,20 +1,19 @@
-# The gates CI runs, once per package, then the docs.
-PACKAGES := dirigent-chap dirigent-climate
+# The gates CI runs, then the docs.
 UV := env -u VIRTUAL_ENV uv
 
 .PHONY: sync check test docs
 
 sync:
-	$(UV) sync --all-packages
+	$(UV) sync
 
 check:
-	$(UV) run ruff format --check packages
-	$(UV) run ruff check packages
-	$(UV) run pyright packages
-	for package in $(PACKAGES); do $(UV) run mypy packages/$$package/src packages/$$package/tests || exit 1; done
+	$(UV) run ruff format --check .
+	$(UV) run ruff check .
+	$(UV) run pyright
+	$(UV) run mypy
 
 test:
-	for package in $(PACKAGES); do $(UV) run pytest packages/$$package || exit 1; done
+	$(UV) run pytest
 
 docs:
 	NO_MKDOCS_2_WARNING=1 $(UV) run mkdocs build --strict

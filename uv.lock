@@ -6,13 +6,6 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
-[manifest]
-members = [
-    "dirigent-chap",
-    "dirigent-climate",
-    "dirigent-contrib",
-]
-
 [[package]]
 name = "annotated-types"
 version = "0.8.0"
@@ -287,44 +280,6 @@ wheels = [
 ]
 
 [[package]]
-name = "dirigent-chap"
-version = "0.27.1"
-source = { editable = "packages/dirigent-chap" }
-dependencies = [
-    { name = "dirigent-common" },
-    { name = "dirigent-plugin" },
-    { name = "httpx2" },
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "dirigent-common", specifier = "==0.27.1" },
-    { name = "dirigent-plugin", specifier = "==0.27.1" },
-    { name = "httpx2", specifier = ">=2.12.0" },
-    { name = "pydantic", specifier = ">=2.13.5" },
-]
-
-[[package]]
-name = "dirigent-climate"
-version = "0.27.1"
-source = { editable = "packages/dirigent-climate" }
-dependencies = [
-    { name = "dirigent-common" },
-    { name = "dirigent-plugin" },
-    { name = "httpx2" },
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "dirigent-common", specifier = "==0.27.1" },
-    { name = "dirigent-plugin", specifier = "==0.27.1" },
-    { name = "httpx2", specifier = ">=2.12.0" },
-    { name = "pydantic", specifier = ">=2.13.5" },
-]
-
-[[package]]
 name = "dirigent-common"
 version = "0.27.1"
 source = { registry = "https://pypi.org/simple" }
@@ -342,10 +297,12 @@ wheels = [
 [[package]]
 name = "dirigent-contrib"
 version = "0.27.1"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
-    { name = "dirigent-chap" },
-    { name = "dirigent-climate" },
+    { name = "dirigent-common" },
+    { name = "dirigent-plugin" },
+    { name = "httpx2" },
+    { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
@@ -365,8 +322,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dirigent-chap", editable = "packages/dirigent-chap" },
-    { name = "dirigent-climate", editable = "packages/dirigent-climate" },
+    { name = "dirigent-common", specifier = "==0.27.1" },
+    { name = "dirigent-plugin", specifier = "==0.27.1" },
+    { name = "httpx2", specifier = ">=2.12.0" },
+    { name = "pydantic", specifier = ">=2.13.5" },
 ]
 
 [package.metadata.requires-dev]

@@ -1,4 +1,4 @@
-# dirigent-climate
+# The open climate service
 
 **The open climate service pack for dirigent.**
 

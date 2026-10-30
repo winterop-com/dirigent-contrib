@@ -1,4 +1,4 @@
-# dirigent-chap
+# Chap
 
 **The Chap pack for dirigent.**
 
