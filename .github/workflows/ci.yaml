@@ -6,30 +6,25 @@ on:
   pull_request:
 
 jobs:
-  package:
-    name: ${{ matrix.package }}
+  test:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [dirigent-chap, dirigent-climate]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.2
         with:
           cache-dependency-glob: "**/uv.lock"
       - name: Sync
-        run: uv sync --locked --all-packages
+        run: uv sync --locked
       - name: Format
-        run: uv run ruff format --check packages/${{ matrix.package }}
+        run: uv run ruff format --check .
       - name: Lint
-        run: uv run ruff check packages/${{ matrix.package }}
+        run: uv run ruff check .
       - name: Types (mypy)
-        run: uv run mypy packages/${{ matrix.package }}/src packages/${{ matrix.package }}/tests
+        run: uv run mypy
       - name: Types (pyright)
-        run: uv run pyright packages/${{ matrix.package }}
+        run: uv run pyright
       - name: Test
-        run: uv run pytest packages/${{ matrix.package }}
+        run: uv run pytest
 
   docs:
     runs-on: ubuntu-latest
@@ -39,7 +34,7 @@ jobs:
         with:
           cache-dependency-glob: "**/uv.lock"
       - name: Sync
-        run: uv sync --locked --all-packages
+        run: uv sync --locked
       # --strict fails on any warning, so a broken link is caught here rather than on main.
       - name: Docs
         run: uv run mkdocs build --strict

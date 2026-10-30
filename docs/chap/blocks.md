@@ -1,6 +1,6 @@
 # Chap blocks
 
-Every block the `dirigent-chap` pack contributes, with the config it takes and the output it
+Every block the Chap pack contributes, with the config it takes and the output it
 produces. The tables are the JSON Schemas each block publishes into the catalog -- the same ones
 `GET /blocks` serves and the UI builds its step form from. Every block declares the `chap`
 group and takes a `connection` naming a [`chap` connection](connection.md) by its code.

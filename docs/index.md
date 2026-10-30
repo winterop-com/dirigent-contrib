@@ -1,17 +1,18 @@
 # dirigent-contrib
 
-**Block packs for dirigent that reach outside systems, one package per system.**
+**Block packs for dirigent that reach outside systems, all in one package.**
 
 | Pack | The system | What it contributes |
 | --- | --- | --- |
-| [`dirigent-chap`](chap/index.md) | Chap, the climate and health modelling platform (chap-core) | The `chap` connection kind and six blocks: import a dataset, run a backtest, forecast from a prediction setup, read its quantiles, list the models, compute the endemic channel. |
-| [`dirigent-climate`](climate/index.md) | The open climate service | The `climate` connection kind and seven blocks: list the datasets, aggregate one to org units, run a batch job and download what it made, deliver an export to DHIS2, ingest and sync a managed dataset. |
+| [Chap](chap/index.md) | Chap, the climate and health modelling platform (chap-core) | The `chap` connection kind and nine blocks: import a dataset, run a backtest, forecast from a prediction setup, read its quantiles, list the models, compute the endemic channel, and record a forecast's alerts and follow their review. |
+| [The open climate service](climate/index.md) | The open climate service | The `climate` connection kind and seven blocks: list the datasets, aggregate one to org units, run a batch job and download what it made, deliver an export to DHIS2, ingest and sync a managed dataset. |
 
-The two are built to be used together and with
-[`dirigent-dhis2`](https://winterop-com.github.io/dirigent-dhis2/): climate data aggregated to
-org units by the open climate service goes into DHIS2 as a dataValueSet, or into Chap as the
-covariates of a dataset a model is evaluated and forecast on. Each pack installs on its own,
-though, and knows nothing of the others.
+`dirigent-contrib` is one package with one version, and installing it brings both packs. Each
+is a subpackage with an entry point of its own, `chap` and `climate`, and knows nothing of the
+other. They are built to be used together and with
+[`dirigent-dhis2`](https://winterop-com.github.io/dirigent-dhis2/), which stays a package of its
+own: climate data aggregated to org units by the open climate service goes into DHIS2 as a
+dataValueSet, or into Chap as the covariates of a dataset a model is evaluated and forecast on.
 
 ## How the packs are built
 

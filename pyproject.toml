@@ -1,22 +1,29 @@
 [project]
 name = "dirigent-contrib"
 version = "0.27.1"
-description = "The workspace the dirigent-contrib block packs are built, tested and documented in."
+description = "Block packs for dirigent that reach outside systems: Chap and the open climate service."
+readme = "README.md"
 requires-python = ">=3.13"
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
-    "dirigent-chap",
-    "dirigent-climate",
+    "dirigent-common==0.27.1",
+    "dirigent-plugin==0.27.1",
+    "httpx2>=2.12.0",
+    "pydantic>=2.13.5",
 ]
 
-[tool.uv]
-package = false
+[project.urls]
+Documentation = "https://winterop-com.github.io/dirigent-contrib/"
+Repository = "https://github.com/winterop-com/dirigent-contrib"
 
-[tool.uv.workspace]
-members = ["packages/*"]
-
-[tool.uv.sources]
-dirigent-chap = { workspace = true }
-dirigent-climate = { workspace = true }
+[project.entry-points."dirigent.plugins.v1"]
+chap = "dirigent_contrib.chap:plugin"
+climate = "dirigent_contrib.climate:plugin"
 
 [dependency-groups]
 dev = [
@@ -33,11 +40,14 @@ dev = [
     "types-pyyaml>=6",
 ]
 
+[build-system]
+requires = ["uv_build>=0.12.0,<0.14.0"]
+build-backend = "uv_build"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-testpaths = ["packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
-pythonpath = ["packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
+testpaths = ["tests"]
 markers = [
     "live: reaches a real Chap or open climate service; opt in with DIRIGENT_LIVE=1 and the URLs it names",
 ]
@@ -45,34 +55,24 @@ markers = [
 [tool.ruff]
 target-version = "py313"
 line-length = 120
-src = ["packages/dirigent-chap/src", "packages/dirigent-climate/src", "packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
+src = ["src", "."]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "D", "SIM", "UP", "B", "TID"]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["D103", "D100", "D101", "D102", "D104"]
+"tests/**" = ["D103", "D100", "D101", "D102", "D104"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = [
-    "chapserver",
-    "climateserver",
-    "dirigent_chap",
-    "dirigent_climate",
-    "dirigent_common",
-    "dirigent_plugin",
-    "dirigent_testing",
-]
+known-first-party = ["dirigent_common", "dirigent_contrib", "dirigent_plugin", "dirigent_testing", "tests"]
 
 [tool.ruff.format]
 quote-style = "double"
 docstring-code-format = true
 
-# Run once per package: each package's tests carry a conftest of their own, and one mypy run
-# over both would see two modules named conftest.
 [tool.mypy]
 python_version = "3.13"
 disallow_untyped_defs = true
@@ -83,11 +83,11 @@ warn_unused_ignores = true
 no_implicit_optional = true
 strict_equality = true
 plugins = ["pydantic.mypy"]
-mypy_path = ["packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
+files = ["src", "tests"]
+mypy_path = ["src"]
 
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
-include = ["packages"]
-extraPaths = ["packages/dirigent-chap/tests", "packages/dirigent-climate/tests"]
+include = ["src", "tests"]
 reportMissingTypeStubs = false

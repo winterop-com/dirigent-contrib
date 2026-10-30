@@ -1,6 +1,6 @@
 # Climate blocks
 
-Every block the `dirigent-climate` pack contributes, with the config it takes and the output it
+Every block the open climate service pack contributes, with the config it takes and the output it
 produces. The tables are the JSON Schemas each block publishes into the catalog -- the same ones
 `GET /blocks` serves and the UI builds its step form from. Every block declares the `climate`
 group and takes a `connection` naming a [`climate` connection](connection.md) by its code.

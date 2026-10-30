@@ -1,5 +1,5 @@
 site_name: dirigent-contrib
-site_description: Block packs for dirigent that reach outside systems, one package per system.
+site_description: Block packs for dirigent that reach outside systems, all in one package.
 site_url: https://winterop-com.github.io/dirigent-contrib/
 repo_url: https://github.com/winterop-com/dirigent-contrib
 edit_uri: ""
