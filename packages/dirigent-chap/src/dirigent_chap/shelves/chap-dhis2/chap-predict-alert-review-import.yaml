@@ -1,0 +1,183 @@
+# Forecast, raise alerts, wait for a person to review them in Chap, and tell each district that
+# has an approved one.
+#
+#   forecast  chap.prediction.run forecasts from a saved prediction setup.
+#   quantiles chap.prediction.read reads the forecast at the median and the 0.9 quantile.
+#   raise     transform.jq turns every forecast cell whose 0.9 quantile reaches the threshold
+#             into one alert, spelled the way Chap's POST /v1/crud/alerts spells it, and answers
+#             with a list of at most one batch: none when no cell breaches.
+#   record    chap.alerts.record records the batch against the policy. Every alert lands in
+#             Chap as `pending`. Over an empty list it is skipped, and so is everything after it:
+#             a forecast that breached nothing has nothing to review.
+#   review    chap.alerts.reviewed waits until no alert of this prediction is pending, looking
+#             every 10 minutes for at most two days.
+#   notify    dhis2.message, from dirigent-dhis2, fans out over the approved alerts and messages
+#             the users assigned to each alert's org unit. A declined alert sends nothing.
+#
+# WHY THE REVIEW LIVES IN CHAP AND THE PIPELINE ONLY WAITS. Approving an alert is a person's
+# decision, made where that person works: a verification component embedded in DHIS2, in the
+# modelling app, anywhere, and always talking to Chap's own POST /v1/crud/alerts/$approve.
+# Chap holds the alert, its state and who decided it, so every tool that shows alerts shows the
+# same decision, and the record outlives this run. The pipeline neither asks the question nor
+# hosts the answer; it records what the forecast raised, waits on the state Chap holds, and
+# moves on once it is decided. A waiting sensor holds no worker -- two days of review is a row
+# with a due time.
+#
+# The deadline is the engine's. Here on_timeout is fail, so an unreviewed forecast fails the
+# run where an operator sees it. To release whatever was approved when the deadline passes
+# instead, set on_timeout: skip and add a chap.alerts.list step behind `rule: all_done` that
+# reads the approved ones; the pack's "Alert verification" docs show it.
+#
+# A prediction setup that names an alert policy raises its alerts itself when the forecast
+# finishes. Against such a setup drop `raise` and `record`, which Chap would refuse as
+# duplicates, and let `review` depend on `forecast` alone.
+#
+# The org units are DHIS2 uids, which is what dhis2.message addresses. Bo is one in the Sierra
+# Leone demo database; THE NOTIFY STEP SENDS REAL MESSAGES to whoever the DHIS2 behind
+# `dhis2-local` assigns to it.
+#
+#   dg run --local examples/chap-dhis2/chap-predict-alert-review-import.yaml \
+#     -p prediction_setup_id=1 -p alert_policy_id=1
+#
+# TO MAKE IT YOURS: a copy names `chap-local` and `dhis2-local` under requires.connections
+# rather than carrying them, so create a `chap` and a `dhis2` connection under those codes, pass
+# your org units' GeoJSON, and pick the threshold and level your policy defines. The instance
+# needs dirigent-dhis2 installed beside this pack.
+
+format: dirigent/v1
+kind: pipeline
+code: chap-predict-alert-review-import
+name: Forecast, review the alerts, notify the districts
+description: Forecast with Chap, record the alerts the forecast breaches, wait for their review in Chap, and message each district with an approved alert.
+
+tags: [chap, dhis2, alerts, starter]
+
+requires:
+  blocks:
+    - chap.prediction.run
+    - chap.prediction.read
+    - transform.jq
+    - chap.alerts.record
+    - chap.alerts.reviewed
+    - dhis2.message
+
+params:
+  type: object
+  required: [prediction_setup_id, alert_policy_id]
+  properties:
+    prediction_setup_id:
+      type: integer
+      description: The saved prediction setup to forecast with, one that names no alert policy.
+    alert_policy_id:
+      type: integer
+      description: The alert policy the alerts are recorded against.
+    level:
+      type: string
+      default: action
+      description: The policy level a breaching cell is recorded at; one the policy defines.
+    threshold:
+      type: number
+      default: 50
+      description: The case count the 0.9 quantile has to reach for a cell to raise an alert.
+    observations:
+      type: array
+      description: This month's observations, one per value, as {period, orgUnit, value, featureName}.
+      default:
+        - {period: "202509", orgUnit: O6uvpzGd5pu, featureName: disease_cases, value: 14}
+        - {period: "202509", orgUnit: O6uvpzGd5pu, featureName: rainfall, value: 180.2}
+        - {period: "202509", orgUnit: O6uvpzGd5pu, featureName: mean_temperature, value: 25.3}
+
+connections:
+  chap-local:
+    name: Local Chap
+    kind: chap
+    description: A chap-core server started with docker compose up, on its default port, without auth.
+    config:
+      base_url: http://localhost:8000
+  dhis2-local:
+    name: Local DHIS2
+    kind: dhis2
+    description: A DHIS2 on its default port with the Sierra Leone demo database, signed in with its demo login.
+    config:
+      base_url: http://localhost:8080
+      basic_username: admin
+      basic_password: district
+
+steps:
+  forecast:
+    block: chap.prediction.run
+    timeout: 2h
+    config:
+      connection: chap-local
+      prediction_setup_id: "${params.prediction_setup_id}"
+      name: monthly forecast with alert review
+      provided_data: "${params.observations}"
+      geojson:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            id: O6uvpzGd5pu
+            properties: {name: Bo}
+            geometry:
+              type: Polygon
+              coordinates: [[[-11.9, 7.7], [-11.5, 7.7], [-11.5, 8.1], [-11.9, 8.1], [-11.9, 7.7]]]
+
+  quantiles:
+    block: chap.prediction.read
+    depends_on: [forecast]
+    config:
+      connection: chap-local
+      prediction_id: "${steps.forecast.output.prediction_id}"
+      quantiles: [0.5, 0.9]
+
+  raise:
+    block: transform.jq
+    depends_on: [forecast, quantiles]
+    config:
+      input:
+        entries: "${steps.quantiles.output.entries}"
+        prediction_id: "${steps.forecast.output.prediction_id}"
+        policy: "${params.alert_policy_id}"
+        level: "${params.level}"
+        threshold: "${params.threshold}"
+      # One alert per org unit and period whose 0.9 quantile reaches the threshold, which is
+      # what Chap allows a prediction: at most one alert per cell.
+      program: |
+        . as $in
+        | [.entries[] | select(.quantile == 0.9 and .value >= $in.threshold)
+           | {timePeriod: .period, orgUnit: .orgUnit, alertPolicyId: $in.policy,
+              level: $in.level, predictionId: $in.prediction_id}]
+        | {batches: (if length == 0 then [] else [.] end)}
+
+  record:
+    block: chap.alerts.record
+    depends_on: [raise]
+    # One item when anything breached, none when nothing did.
+    for_each: "${steps.raise.output.value.batches}"
+    config:
+      connection: chap-local
+      alerts: "${item}"
+
+  review:
+    block: chap.alerts.reviewed
+    depends_on: [forecast, record]
+    # A person decides, so a look every 10 minutes is plenty, and two days is the review's window.
+    poll: 10m
+    deadline: 2d
+    on_timeout: fail
+    config:
+      connection: chap-local
+      prediction_id: "${steps.forecast.output.prediction_id}"
+      alert_policy_id: "${params.alert_policy_id}"
+      release: all
+
+  notify:
+    block: dhis2.message
+    depends_on: [review]
+    # One message per approved alert, to the users assigned to its org unit.
+    for_each: "${steps.review.output.approved}"
+    config:
+      connection: dhis2-local
+      subject: "${item.level} alert for ${item.timePeriod}"
+      text: "Chap forecasts an outbreak at the ${item.level} level for ${item.timePeriod}. The alert was reviewed and approved by ${item.approvedBy}."
+      org_units: ["${item.orgUnit}"]

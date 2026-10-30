@@ -10,7 +10,7 @@ dg examples show chap-predict-and-read
 
 They live in
 [`packages/dirigent-chap/src/dirigent_chap/shelves/`](https://github.com/winterop-com/dirigent-contrib/tree/main/packages/dirigent-chap/src/dirigent_chap/shelves),
-on two shelves. Each document opens with a header that says what it does and why it is
+on three shelves. Each document opens with a header that says what it does and why it is
 configured as it is, and carries the connections it uses, each with a name and a description.
 
 ## `chap/`: the native blocks
@@ -47,6 +47,43 @@ open climate service; the dataset and the backtest are written to the local Chap
       on_rejected: fail
 ```
 
+## `chap-dhis2/`: alerts reviewed in Chap, sent through DHIS2
+
+`chap-predict-alert-review-import` is [alert verification](index.md#alert-verification) end to
+end. `chap.prediction.run` forecasts and `chap.prediction.read` reads the 0.9 quantile;
+`transform.jq` turns every cell that reaches the threshold into an alert, and
+`chap.alerts.record` records them against the policy, each `pending`. `chap.alerts.reviewed`
+then waits, every 10 minutes for up to two days, until a person has decided on every one of
+them in Chap, from wherever they review. `dhis2.message`, from `dirigent-dhis2`, fans out over
+the approved ones and messages the users assigned to each alert's org unit; a declined alert
+sends nothing, and a forecast that breached nothing skips everything after `raise`. It needs
+`dirigent-dhis2` installed beside this pack, and it carries `dhis2-local` beside `chap-local`,
+since its last step sends real messages.
+
+```yaml
+  review:
+    block: chap.alerts.reviewed
+    depends_on: [forecast, record]
+    poll: 10m
+    deadline: 2d
+    on_timeout: fail
+    config:
+      connection: chap-local
+      prediction_id: "${steps.forecast.output.prediction_id}"
+      alert_policy_id: "${params.alert_policy_id}"
+      release: all
+
+  notify:
+    block: dhis2.message
+    depends_on: [review]
+    for_each: "${steps.review.output.approved}"
+    config:
+      connection: dhis2-local
+      subject: "${item.level} alert for ${item.timePeriod}"
+      text: "Chap forecasts an outbreak at the ${item.level} level for ${item.timePeriod}. ..."
+      org_units: ["${item.orgUnit}"]
+```
+
 ## Running one
 
 A document that names a remote system cannot run against a mock, so `dg run --local` runs it
@@ -67,5 +104,6 @@ The pack's test suite holds every document to the catalog the packs contribute: 
 `dirigent/v1` pipeline coded after its file, every step's config fits its block's published
 schema, every block it names is under `requires.blocks`, every connection it carries has a name
 and a description, and every `${steps.<step>.output.<field>}` names a field the earlier step
-publishes and depends on. A step naming a block from elsewhere -- the engine's `storage.read` --
-is left out of the schema check, since it is not this pack's to answer for.
+publishes and depends on. A step naming a block from elsewhere -- the engine's `storage.read` and
+`transform.jq`, and `dhis2.message` from `dirigent-dhis2` -- is left out of the schema check,
+since it is not this pack's to answer for.

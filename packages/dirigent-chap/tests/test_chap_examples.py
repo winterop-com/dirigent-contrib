@@ -2,8 +2,9 @@
 
 ``check_pack_examples`` is a single-pack check, so a document that composes this pack with
 another is checked with the steps no installed contribution provides removed: the engine's
-own ``storage.read``. The ``chap-climate`` shelf is checked against this pack and
-``dirigent-climate`` together, since its documents are built from both.
+own ``storage.read`` and ``transform.jq``, and the ``dhis2.message`` of ``dirigent-dhis2``,
+which is not installed beside this repository's tests. The ``chap-climate`` shelf is checked
+against this pack and ``dirigent-climate`` together, since its documents are built from both.
 """
 
 import re
@@ -16,15 +17,18 @@ import yaml
 from dirigent_chap import ChapPlugin
 from dirigent_climate import ClimatePlugin
 from dirigent_common import HumaneJsonSchema
-from dirigent_plugin import Contribution, merge_contributions
+from dirigent_plugin import AnyOperator, AnySensor, Contribution, merge_contributions
 from dirigent_testing import check_pack_examples
 
 SHELVES = Path(str(ChapPlugin().examples()[0]))
 
 CONTRIBUTION = merge_contributions([ChapPlugin().contribute(), ClimatePlugin().contribute()])
 
-#: The output fields of the engine's own blocks the documents read.
-ENGINE_OUTPUTS: Final = {"storage.read": {"content_type", "text", "value", "bytes_read"}}
+#: The output fields of the blocks from elsewhere the documents read.
+ENGINE_OUTPUTS: Final = {
+    "storage.read": {"content_type", "text", "value", "bytes_read"},
+    "transform.jq": {"value"},
+}
 
 #: A reference to an earlier step's output field.
 STEP_OUTPUT: Final = re.compile(r"\$\{steps\.([a-z_]+)\.output\.([a-z_]+)")
@@ -44,7 +48,7 @@ def _only_known_steps(document: dict[str, Any], contribution: Contribution) -> d
 
 def test_the_shelves_the_hook_answers_with_are_the_ones_in_the_package() -> None:
     assert SHELVES.is_dir() and SHELVES.parent.name == "dirigent_chap"
-    assert {path.parent.name for path in DOCUMENTS} == {"chap", "chap-climate"}
+    assert {path.parent.name for path in DOCUMENTS} == {"chap", "chap-climate", "chap-dhis2"}
 
 
 def test_every_example_conforms_to_the_catalog(tmp_path: Path) -> None:
@@ -69,7 +73,8 @@ def test_every_carried_connection_has_a_name_and_a_description(path: Path) -> No
 
 @pytest.mark.parametrize("path", DOCUMENTS, ids=[path.stem for path in DOCUMENTS])
 def test_every_output_a_step_reads_is_one_the_earlier_step_publishes(path: Path) -> None:
-    blocks = {block.spec.id: block for block in CONTRIBUTION.operators}
+    contributed: list[AnyOperator | AnySensor] = [*CONTRIBUTION.operators, *CONTRIBUTION.sensors]
+    blocks = {block.spec.id: block for block in contributed}
     steps = cast("dict[str, Any]", _load(path)["steps"])
     for name, step in steps.items():
         for source, field in STEP_OUTPUT.findall(yaml.safe_dump(step.get("config", {}))):

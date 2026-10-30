@@ -18,4 +18,5 @@ server that sets it wants the token on the connection; every block sends it as
 | [chap-thresholds.yaml](chap-thresholds.yaml) | Compute the endemic channel for a stored dataset. |
 
 The climate-and-health loop, which reads the open climate service before it writes to Chap,
-is on its own shelf: [`../chap-climate/`](../chap-climate).
+is on its own shelf: [`../chap-climate/`](../chap-climate). The alert review, which waits on
+Chap and then messages districts through DHIS2, is on [`../chap-dhis2/`](../chap-dhis2).
