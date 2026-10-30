@@ -3,7 +3,8 @@
 The Chap pack for [dirigent](https://github.com/winterop-com/dirigent). It contributes the
 `chap` connection kind and the blocks that drive one Chap (chap-core) server: import
 observations as a dataset, run a backtest, forecast from a saved prediction setup, read the
-forecast's quantiles, list the configured models, and compute the endemic channel.
+forecast's quantiles, list the configured models, compute the endemic channel, and record a
+forecast's alerts and wait for a person to review them in Chap.
 
 | Block | Kind | What it does |
 | --- | --- | --- |
@@ -13,6 +14,9 @@ forecast's quantiles, list the configured models, and compute the endemic channe
 | `chap.prediction.read` | operator | Reads a prediction's forecasts at the quantiles asked for. |
 | `chap.models.list` | operator | Lists the server's configured models. |
 | `chap.thresholds` | operator | Computes outbreak thresholds, the endemic channel, for a dataset. |
+| `chap.alerts.record` | operator | Records alerts against a policy, each one waiting for review. |
+| `chap.alerts.reviewed` | sensor | Waits until a prediction's alerts are reviewed, and hands on the approved ones. |
+| `chap.alerts.list` | operator | Reads where alerts stand in the review, once. |
 
 ```bash
 uv add dirigent-chap

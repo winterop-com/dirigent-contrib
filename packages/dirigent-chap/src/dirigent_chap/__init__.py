@@ -4,6 +4,17 @@ from collections.abc import Sequence
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 
+from dirigent_chap.alerts import (
+    ChapAlertCounts,
+    ChapAlertsListConfig,
+    ChapAlertsListOperator,
+    ChapAlertsOutput,
+    ChapAlertsRecordConfig,
+    ChapAlertsRecordOperator,
+    ChapAlertsRecordOutput,
+    ChapAlertsReviewedConfig,
+    ChapAlertsReviewedSensor,
+)
 from dirigent_chap.backtests import ChapBacktestRunConfig, ChapBacktestRunOperator, ChapBacktestRunOutput
 from dirigent_chap.configured_models import ChapModelsListConfig, ChapModelsListOperator, ChapModelsListOutput
 from dirigent_chap.connection import ChapConnectionConfig, ChapConnectionKind, build_client, client_for
@@ -38,7 +49,10 @@ class ChapPlugin:
                 ChapPredictionReadOperator(),
                 ChapModelsListOperator(),
                 ChapThresholdsOperator(),
+                ChapAlertsRecordOperator(),
+                ChapAlertsListOperator(),
             ],
+            sensors=[ChapAlertsReviewedSensor()],
             connection_kinds=[ChapConnectionKind()],
             labels=[CHAP],
         )
@@ -53,6 +67,15 @@ plugin = ChapPlugin()
 
 __all__ = [
     "SHELVES_DIRECTORY",
+    "ChapAlertCounts",
+    "ChapAlertsListConfig",
+    "ChapAlertsListOperator",
+    "ChapAlertsOutput",
+    "ChapAlertsRecordConfig",
+    "ChapAlertsRecordOperator",
+    "ChapAlertsRecordOutput",
+    "ChapAlertsReviewedConfig",
+    "ChapAlertsReviewedSensor",
     "ChapBacktestRunConfig",
     "ChapBacktestRunOperator",
     "ChapBacktestRunOutput",

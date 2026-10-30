@@ -6,10 +6,13 @@ from pluginkit import PluginManager
 
 from dirigent_chap import ChapPlugin, plugin
 from dirigent_common import API_VERSION, HumaneJsonSchema
-from dirigent_plugin import ENTRY_POINT_GROUP, PROJECT_NAME, contribute, markers
+from dirigent_plugin import ENTRY_POINT_GROUP, PROJECT_NAME, AnyOperator, AnySensor, contribute, markers
 from dirigent_testing import assert_contribution_conforms
 
 CHAP_BLOCKS = [
+    "chap.alerts.list",
+    "chap.alerts.record",
+    "chap.alerts.reviewed",
     "chap.backtest.run",
     "chap.dataset.import",
     "chap.models.list",
@@ -21,13 +24,16 @@ CHAP_BLOCKS = [
 #: The blocks that submit a Chap job and follow it, and so are probed.
 PROBED = {"chap.backtest.run", "chap.dataset.import", "chap.prediction.run"}
 
+#: The blocks that write without a job to follow, and so are neither probed nor safe to repeat.
+WRITES = {"chap.alerts.record"}
+
 
 def test_the_pack_contributes_the_chap_blocks() -> None:
     contribution = ChapPlugin().contribute()
     assert contribution.api_version == API_VERSION
     assert sorted(contribution.block_ids()) == CHAP_BLOCKS
     assert [connection.id for connection in contribution.connection_kinds] == ["chap"]
-    assert contribution.sensors == []
+    assert [sensor.spec.id for sensor in contribution.sensors] == ["chap.alerts.reviewed"]
     assert [catalogue.prefix for catalogue in contribution.labels] == ["chap"]
 
 
@@ -37,7 +43,8 @@ def test_the_contribution_is_well_formed() -> None:
 
 def test_every_chap_block_shelves_under_the_chap_group() -> None:
     contribution = ChapPlugin().contribute()
-    assert {operator.spec.group for operator in contribution.operators} == {"chap"}
+    blocks: list[AnyOperator | AnySensor] = [*contribution.operators, *contribution.sensors]
+    assert {block.spec.group for block in blocks} == {"chap"}
 
 
 def test_the_job_blocks_poll_and_the_reads_are_idempotent() -> None:
@@ -46,12 +53,21 @@ def test_the_job_blocks_poll_and_the_reads_are_idempotent() -> None:
         if operator.spec.id in PROBED:
             assert operator.spec.default_poll is not None, operator.spec.id
             assert not operator.spec.idempotent, operator.spec.id
+        elif operator.spec.id in WRITES:
+            assert operator.spec.default_poll is None and not operator.spec.idempotent, operator.spec.id
         else:
             assert operator.spec.idempotent, operator.spec.id
 
 
+def test_the_review_sensor_waits_inside_a_run() -> None:
+    (sensor,) = ChapPlugin().contribute().sensors
+    assert sensor.spec.source is False
+
+
 def test_every_chap_block_marks_its_connection_field_as_a_reference() -> None:
-    for operator in ChapPlugin().contribute().operators:
+    contribution = ChapPlugin().contribute()
+    blocks: list[AnyOperator | AnySensor] = [*contribution.operators, *contribution.sensors]
+    for operator in blocks:
         schema = operator.config_model.model_json_schema(mode="serialization", schema_generator=HumaneJsonSchema)
         field = cast("dict[str, Any]", schema["properties"]["connection"])
         ref = cast("str", field["$ref"]).removeprefix("#/$defs/")
