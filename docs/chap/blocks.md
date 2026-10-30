@@ -25,6 +25,9 @@ this pack runs code on the worker.
 | [`chap.prediction.read`](#chappredictionread) | operator | Read a Chap prediction's quantiles. |
 | [`chap.models.list`](#chapmodelslist) | operator | List the models a Chap server has configured. |
 | [`chap.thresholds`](#chapthresholds) | operator | Compute the endemic channel for a Chap dataset. |
+| [`chap.alerts.record`](#chapalertsrecord) | operator | Record alerts in Chap's review queue. |
+| [`chap.alerts.reviewed`](#chapalertsreviewed) | sensor | Wait for a Chap prediction's alerts to be reviewed. |
+| [`chap.alerts.list`](#chapalertslist) | operator | List Chap alerts by their review state. |
 
 ## `chap.dataset.import`
 
@@ -215,6 +218,102 @@ two Chap ships are `seasonal` (`stdMultiplier`) and `percentile` (`quantile`,
 | `lines` | `any[]` |  |  | The line parameter of each threshold line, in the order of every entry's `values`. |
 | `entries` | `any[]` |  |  | One entry per requested period and location: `{period, location, values}`, a value null where no threshold could be computed. |
 
+## `chap.alerts.record`
+
+Record alerts in Chap's review queue.
+
+Not idempotent: a second alert for the same prediction, org unit and period is refused.
+
+Posts `POST /v1/crud/alerts` with the alerts as written and hands on the ids Chap gave them.
+Chap validates the whole batch before it writes any of it, so an unknown policy, level or
+prediction (422) records nothing and is never retried. Every alert starts `pending`. A
+prediction setup that names an alert policy raises its own alerts when its forecast finishes,
+so a pipeline forecasting from one has nothing to record. Any undeclared key is sent as
+written. See [Alert verification](index.md#alert-verification).
+
+**Config**
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `connection` | `string` | yes |  | The code of the chap connection naming the server. |
+| `alerts` | `object[]` | yes |  | The alerts as Chap spells them: `{timePeriod, orgUnit, alertPolicyId, level, predictionId}`, each `level` one the policy defines. |
+
+**Output**
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `alert_ids` | `integer[]` | yes |  | The recorded alerts' ids, in the order they were sent; each starts `pending`. |
+| `count` | `integer` | yes |  | How many alerts were recorded. |
+
+## `chap.alerts.reviewed`
+
+Wait for a Chap prediction's alerts to be reviewed.
+
+A sensor. Pokes every 5m and gives up after 3 days unless the step says otherwise.
+
+Each poke is one `GET /v1/crud/alerts?predictionId=...`, narrowed by `alertPolicyId` when the
+step names a policy and to `org_units` when it names any. An alert whose `approved` is
+`approved` or `declined` is decided; `pending`, and any state Chap adds later, is still
+waiting. Under `release: all` the wait ends once nothing is pending, under `release: any` as
+soon as one alert is decided, and under either a prediction that raised no alerts ends it at
+once with empty lists. While it waits, the attempt says how far the review has come -- `3 of 7
+reviewed` -- with the same fraction as its progress. The output splits the alerts by where they
+stand, so a `for_each` over `approved` is one step per alert cleared for release.
+
+The sensor never decides on an alert, and it is not a source: it waits inside the run that
+forecast the prediction it names. `poll`, `deadline` and `on_timeout` are the step's own, as
+for every sensor. See [Alert verification](index.md#alert-verification).
+
+**Config**
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `connection` | `string` | yes |  | The code of the chap connection naming the server. |
+| `prediction_id` | `integer` | yes |  | The prediction whose alerts are waited on, as `chap.prediction.run` outputs it. |
+| `alert_policy_id` | `integer or null` |  | `null` | Only the alerts raised against this policy; every policy when unset. |
+| `org_units` | `string[] or null` |  | `null` | Only the alerts for these org units; every org unit when unset. |
+| `release` | `"all" or "any"` |  | `"all"` | When the wait ends: `all` once no alert is pending, `any` as soon as one is decided. A prediction that raised no alerts ends it at once either way. |
+
+**Output**
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `approved` | `any[]` |  |  | The alerts a reviewer cleared for release, as Chap answers with them: `{id, timePeriod, orgUnit, alertPolicyId, level, predictionId, approvedBy, approvedAt, ...}`. |
+| `declined` | `any[]` |  |  | The alerts a reviewer decided not to release, in the same shape. |
+| `pending` | `any[]` |  |  | The alerts nobody has decided on yet, in the same shape. |
+| `counts` | `object` |  |  | How many alerts there are, and how many of them are approved, declined and pending. |
+
+The `counts` object carries `total`, `approved`, `declined` and `pending`.
+
+## `chap.alerts.list`
+
+List Chap alerts by their review state.
+
+Idempotent.
+
+The same listing `chap.alerts.reviewed` pokes with, read once and never waited on: every alert
+the filters select, split into `approved`, `declined` and `pending`. With no `prediction_id`
+it reads every prediction's alerts, and its `pending` is the whole review queue. It is the
+step that releases what was approved when a review's deadline passed.
+
+**Config**
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `connection` | `string` | yes |  | The code of the chap connection naming the server. |
+| `prediction_id` | `integer or null` |  | `null` | Only the alerts this prediction raised; every prediction's when unset. |
+| `alert_policy_id` | `integer or null` |  | `null` | Only the alerts raised against this policy; every policy when unset. |
+| `org_units` | `string[] or null` |  | `null` | Only the alerts for these org units; every org unit when unset. |
+
+**Output**
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `approved` | `any[]` |  |  | The alerts a reviewer cleared for release, as Chap answers with them: `{id, timePeriod, orgUnit, alertPolicyId, level, predictionId, approvedBy, approvedAt, ...}`. |
+| `declined` | `any[]` |  |  | The alerts a reviewer decided not to release, in the same shape. |
+| `pending` | `any[]` |  |  | The alerts nobody has decided on yet, in the same shape. |
+| `counts` | `object` |  |  | How many alerts there are, and how many of them are approved, declined and pending. |
+
 ## How a failure is classified
 
 A refusal the server answers with is classified by its status: a 5xx and a 429 are
@@ -242,3 +341,6 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 | `chap.csv.bad_value` | `the csv's {column} on line {line} is '{value}', which is not a number` |
 | `chap.dataset.rejected` | `Chap rejected {count} of the observations and on_rejected is fail, so nothing was imported: {detail}` |
 | `chap.job.not_submitted` | `{where} answered without a job id to follow` |
+| `chap.alerts.reviewing` | `{reviewed} of {total} reviewed` |
+| `chap.alerts.not_a_list` | `{where} answered with something other than a list of alerts` |
+| `chap.alerts.not_recorded` | `{where} answered without the ids of the alerts it recorded` |

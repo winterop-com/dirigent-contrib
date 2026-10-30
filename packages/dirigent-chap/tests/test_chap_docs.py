@@ -14,10 +14,13 @@ from pydantic import BaseModel
 from dirigent_chap import ChapPlugin
 from dirigent_chap.connection import ChapConnectionConfig
 from dirigent_common import HumaneJsonSchema, as_markdown
+from dirigent_plugin import AnyOperator, AnySensor
 
 DOCS = Path(__file__).resolve().parents[3] / "docs" / "chap"
 
 CONTRIBUTION = ChapPlugin().contribute()
+
+BLOCKS: list[AnyOperator | AnySensor] = [*CONTRIBUTION.operators, *CONTRIBUTION.sensors]
 
 
 def _fields(model: type[BaseModel]) -> dict[str, Any]:
@@ -27,7 +30,7 @@ def _fields(model: type[BaseModel]) -> dict[str, Any]:
 
 def _published() -> list[Any]:
     cases: list[Any] = []
-    for block in CONTRIBUTION.operators:
+    for block in BLOCKS:
         for table, model in (("config", block.config_model), ("output", block.output_model)):
             for name, field in _fields(model).items():
                 cases.append(pytest.param("blocks.md", field.get("description"), id=f"{block.spec.id}-{table}-{name}"))
@@ -56,5 +59,5 @@ def test_every_published_field_is_described_on_its_page(page: str, description: 
 
 def test_every_block_has_a_section_on_the_blocks_page() -> None:
     page = (DOCS / "blocks.md").read_text()
-    for block in CONTRIBUTION.operators:
+    for block in BLOCKS:
         assert f"## `{block.spec.id}`" in page, block.spec.id
