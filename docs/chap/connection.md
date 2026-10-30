@@ -1,0 +1,67 @@
+# The `chap` connection
+
+One `chap` connection is one Chap server and, when the server wants one, its API token. Every
+block in this pack takes a `connection` field naming one by its `code`, and builds its client
+from it: the URL, the token, the TLS setting and the timeout all come from the connection,
+never from a step.
+
+## Settings
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `base_url` | `string` | yes |  | The server root every request path is resolved against, such as `http://localhost:8000`. |
+| `api_token` | `string (password) or null` |  | `null` | The server's API token, sent as `Authorization: Bearer`; leave unset for a server without auth. |
+| `verify_tls` | `boolean` |  | `true` | Whether certificates are verified; turning this off is a per-connection decision. |
+| `timeout` | `string (humane-duration)` |  | `"30s"` | The timeout applied to every request through this connection. |
+
+`api_token` is the secret field: it is encrypted at rest with the instance key and redacted in
+every read.
+
+## Two auth modes
+
+Chap's authentication is opt-in, and the connection follows whichever mode the server runs in:
+
+- **No auth.** A server started without `CHAP_API_TOKEN` -- `docker compose up` in a chap-core
+  checkout, out of the box -- takes every call without a credential. Leave `api_token` unset and
+  the blocks send no `Authorization` header at all.
+- **Token.** A server started with `CHAP_API_TOKEN` set refuses every call but `/health` and
+  `/system/info` without it. Set `api_token` to the same value and every block sends
+  `Authorization: Bearer <token>`.
+
+## The health check
+
+The check asks `GET /system/info`, which Chap always answers without a token, and reports the
+`chap_core_version` it gives as the connection's version. That answer also says whether the
+server wants a token, in `auth_required`:
+
+| The server | The connection | The check |
+| --- | --- | --- |
+| Wants no token | Carries none | Healthy. |
+| Wants a token | Carries none | Unhealthy: `chap.connection.auth_required`. |
+| Either | Carries a token | Proves it on `GET /v1/crud/configured-models`: healthy when Chap takes it, unhealthy with `chap.connection.token_refused` on a 401 or 403. |
+
+A server that does not answer is unhealthy with `chap.connection.unreachable`. The check never
+raises.
+
+## Creating one
+
+A local server without auth:
+
+```bash
+dg connection create chap chap-local \
+  --name "Local Chap" \
+  --set base_url=http://localhost:8000
+```
+
+A server with auth:
+
+```bash
+dg connection create chap chap-prod \
+  --name "Chap" \
+  --set base_url=https://chap.example.org \
+  --set api_token="$CHAP_API_TOKEN"
+```
+
+To run one locally, start chap-core with `docker compose up` in its checkout (it serves on
+port 8000; image `ghcr.io/dhis2-chap/chap-core:<tag>`), with `CHAP_API_TOKEN` exported to turn
+auth on.
