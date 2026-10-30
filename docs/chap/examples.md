@@ -17,11 +17,11 @@ configured as it is, and carries the connections it uses, each with a name and a
 
 | Document | The operation |
 | --- | --- |
-| `chap-models` | List the configured models a backtest names. |
-| `chap-import-dataset-dry-run` | Validate observations as a dry run and read the rejections. |
-| `chap-backtest` | Backtest a model on a stored dataset, with the server's saved defaults. |
-| `chap-predict-and-read` | Forecast from a prediction setup, then read its quantiles at 0.1, 0.5 and 0.9. A starter. |
-| `chap-thresholds` | Compute the lower and upper edge of the endemic channel for a stored dataset. |
+| `chap-models` | List the models a Chap server has configured. |
+| `chap-import-dataset-dry-run` | Send observations to Chap as a dry run and read which ones it would reject. |
+| `chap-backtest` | Backtest one Chap model on a stored dataset and read its metrics. |
+| `chap-predict-and-read` | Forecast with a Chap prediction setup and read the forecast at three quantiles. A starter. |
+| `chap-thresholds` | Compute the endemic channel's lower and upper edge for a stored Chap dataset. |
 
 They carry `chap-local`, a chap-core server on `http://localhost:8000` without auth.
 

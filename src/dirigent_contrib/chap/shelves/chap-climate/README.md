@@ -6,4 +6,4 @@ by the `climate.*` blocks, imported into Chap by the `chap.*` blocks. An instanc
 
 | File | The operation |
 | --- | --- |
-| [climate-to-chap-backtest.yaml](climate-to-chap-backtest.yaml) | Aggregate rainfall to Chap CSV, import it beside the case counts, and backtest. |
+| [climate-to-chap-backtest.yaml](climate-to-chap-backtest.yaml) | Aggregate rainfall to org units, import it into Chap, and backtest a model. |

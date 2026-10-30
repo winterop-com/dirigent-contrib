@@ -5,4 +5,4 @@ Documents that carry what the open climate service makes into DHIS2 through the
 
 | File | The operation |
 | --- | --- |
-| [climate-sync-to-dhis2.yaml](climate-sync-to-dhis2.yaml) | Sync, aggregate as a batch job, download the dataValueSet, and import it into DHIS2. |
+| [climate-sync-to-dhis2.yaml](climate-sync-to-dhis2.yaml) | Sync a climate dataset, aggregate it to org units, and import it into DHIS2. |

@@ -11,11 +11,11 @@ the demo is shared.
 
 | File | The operation |
 | --- | --- |
-| [climate-datasets.yaml](climate-datasets.yaml) | List the published datasets, with their period types and extents. |
-| [climate-aggregate-to-dhis2.yaml](climate-aggregate-to-dhis2.yaml) | Aggregate a dataset to org units as a DHIS2 dataValueSet, synchronously. |
-| [climate-batch-and-export.yaml](climate-batch-and-export.yaml) | The same as a batch job, then the service's own delivery to DHIS2 as a dry run. |
-| [climate-ingest.yaml](climate-ingest.yaml) | Create or update a managed dataset. |
-| [climate-sync.yaml](climate-sync.yaml) | Bring a managed dataset forward to its source's newest data. |
+| [climate-datasets.yaml](climate-datasets.yaml) | List the datasets the open climate service has published. |
+| [climate-aggregate-to-dhis2.yaml](climate-aggregate-to-dhis2.yaml) | Aggregate daily rainfall to org units as a set of DHIS2 data values. |
+| [climate-batch-and-export.yaml](climate-batch-and-export.yaml) | Aggregate climate data in a batch job, then rehearse sending it to DHIS2. |
+| [climate-ingest.yaml](climate-ingest.yaml) | Bring a dataset into the open climate service and follow the job to the end. |
+| [climate-sync.yaml](climate-sync.yaml) | Bring a climate dataset up to date with the newest data from its source. |
 
 Documents that carry the payload out of the service into another pack's blocks are on their
 own shelf: [`../climate-dhis2/`](../climate-dhis2).

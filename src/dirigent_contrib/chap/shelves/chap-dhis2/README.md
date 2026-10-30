@@ -5,4 +5,4 @@ Documents that carry what Chap decides into DHIS2 through the `dhis2.*` blocks o
 
 | File | The operation |
 | --- | --- |
-| [chap-predict-alert-review-notify.yaml](chap-predict-alert-review-notify.yaml) | Forecast, record the alerts it breaches, wait for their review in Chap, and message each district with an approved one. |
+| [chap-predict-alert-review-notify.yaml](chap-predict-alert-review-notify.yaml) | Forecast with Chap, wait for alerts to be reviewed, then message the districts. |
