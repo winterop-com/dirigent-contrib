@@ -1,13 +1,19 @@
 """The ``climate`` connection kind: one instance of the open climate service, and the client for it."""
 
+import re
 from datetime import timedelta
 from typing import ClassVar, Final, cast
 
 import httpx2
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dirigent_common import BlockModel, Duration, HealthReport
-from dirigent_contrib.climate.messages import CONNECTION_READ_ONLY, CONNECTION_UNHEALTHY, CONNECTION_UNREACHABLE
+from dirigent_contrib.climate.messages import (
+    BAD_HEADER,
+    CONNECTION_READ_ONLY,
+    CONNECTION_UNHEALTHY,
+    CONNECTION_UNREACHABLE,
+)
 from dirigent_contrib.climate.web import remote_words
 from dirigent_plugin import ConnectionKind, ConnectionRef, StepContext
 
@@ -20,9 +26,17 @@ HEALTHY: Final = "healthy"
 #: The health it reports when it answers but something under it is failing.
 DEGRADED: Final = "degraded"
 
+#: What a header's name may hold, as HTTP defines one.
+HEADER_NAME: Final = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+
+#: What a header's value may hold: visible ASCII, with spaces only between its words.
+HEADER_VALUE: Final = re.compile(r"(?:[\x21-\x7e]+(?: +[\x21-\x7e]+)*)?")
+
 
 class ClimateConnectionConfig(BlockModel):
     """Everything needed to talk to one instance of the open climate service."""
+
+    model_config = ConfigDict(hide_input_in_errors=True)
 
     base_url: str = Field(min_length=1)
     """The service root every request path is resolved against, such as `https://climate-demo.dhis2.org/ocs`."""
@@ -36,6 +50,15 @@ class ClimateConnectionConfig(BlockModel):
 
     timeout: Duration = Field(default=timedelta(seconds=30), gt=timedelta(0))
     """The timeout applied to every request through this connection, unless a block says otherwise."""
+
+    @field_validator("headers")
+    @classmethod
+    def _headers_can_be_sent(cls, headers: dict[str, str]) -> dict[str, str]:
+        """Reject a header that cannot be sent, without saying what it held."""
+        for name, value in headers.items():
+            if HEADER_NAME.fullmatch(name) is None or HEADER_VALUE.fullmatch(value) is None:
+                raise ValueError(BAD_HEADER.render())
+        return headers
 
 
 def settings_of(config: BaseModel) -> ClimateConnectionConfig:

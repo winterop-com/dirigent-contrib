@@ -8,6 +8,12 @@ ANSWERED = CLIMATE.define("answered", "{where} answered {status}: {remote}")
 
 NOT_JSON = CLIMATE.define("not_json", "{where} answered with a body that is not JSON")
 
+BAD_HEADER = CLIMATE.define(
+    "connection.bad_header",
+    "a header's name must be an HTTP token and its value visible ASCII with no leading or trailing whitespace, "
+    "or it cannot be sent",
+)
+
 CONNECTION_UNREACHABLE = CLIMATE.define("connection.unreachable", "the open climate service did not answer: {detail}")
 
 CONNECTION_UNHEALTHY = CLIMATE.define("connection.unhealthy", "the open climate service reports itself {status}")

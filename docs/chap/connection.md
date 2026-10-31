@@ -10,12 +10,19 @@ never from a step.
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `base_url` | `string` | yes |  | The server root every request path is resolved against, such as `http://localhost:8000`. |
-| `api_token` | `string (password) or null` |  | `null` | The server's API token, sent as `Authorization: Bearer`; leave unset for a server without auth. |
+| `api_token` | `string (password) or null` |  | `null` | The server's API token, sent as `Authorization: Bearer`: visible ASCII with no whitespace. Leave it unset for a server without auth. |
 | `verify_tls` | `boolean` |  | `true` | Whether certificates are verified; turning this off is a per-connection decision. |
 | `timeout` | `string (humane-duration)` |  | `"30s"` | The timeout applied to every request through this connection. |
 
 `api_token` is the secret field: it is encrypted at rest with the instance key and redacted in
 every read.
+
+An `api_token` holding anything but visible ASCII, such as the trailing newline a pasted or
+file-read token brings with it, is refused when the connection is created or updated, because it
+cannot be sent as a header value. The refusal does not repeat the value. An empty one is read as
+unset. A row stored before this rule fails when it is next read, so its check is unhealthy and its
+steps fail until the token is set again. A token that was already written into a check's detail or a
+step's error should be rotated.
 
 ## Two auth modes
 

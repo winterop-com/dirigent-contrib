@@ -2,14 +2,16 @@
 
 import httpx2
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
-from dirigent_contrib.chap.connection import ChapConnectionConfig, ChapConnectionKind, client_for
+from dirigent_contrib.chap.connection import ChapConnectionConfig, ChapConnectionKind, build_client, client_for
 from dirigent_contrib.chap.messages import CONNECTION_AUTH_REQUIRED
 from dirigent_testing import FakeContext
 from tests.chap.chapserver import BASE_URL, CONNECTION, ChapServer
 
 TOKEN = "t" * 32
+
+DUMMY = "DUMMYTOKEN4567"
 
 
 def _info(auth_required: bool) -> dict[str, object]:
@@ -93,3 +95,40 @@ async def test_a_block_sends_no_credential_through_a_connection_without_a_token(
 def test_a_connection_needs_a_base_url() -> None:
     with pytest.raises(ValueError, match="base_url"):
         ChapConnectionConfig.model_validate({})
+
+
+#: A dummy token, and what a paste or a file can do to it. None of them can be a header value whole.
+BAD_TOKENS = [
+    pytest.param(f"{DUMMY} ", id="trailing-blank"),
+    pytest.param(f" {DUMMY}", id="leading-blank"),
+    pytest.param(f"{DUMMY}\n", id="trailing-lf"),
+    pytest.param(f"{DUMMY}\r\n", id="trailing-crlf"),
+    pytest.param(f"{DUMMY}\nX-Injected: 1", id="inner-lf"),
+    pytest.param(f"{DUMMY[:6]} {DUMMY[6:]}", id="inner-blank"),
+    pytest.param(f"{DUMMY}\t", id="tab"),
+    pytest.param(f"{DUMMY}é", id="non-ascii"),
+    pytest.param("x" * 330 + "\n" + DUMMY, id="long-with-a-line-feed"),
+]
+
+
+@pytest.mark.parametrize("token", BAD_TOKENS)
+def test_a_token_that_cannot_be_a_header_value_is_refused_without_repeating_it(token: str) -> None:
+    with pytest.raises(ValidationError) as refused:
+        ChapConnectionConfig.model_validate({"base_url": BASE_URL, "api_token": token})
+    assert "visible ASCII" in str(refused.value)
+    assert DUMMY not in str(refused.value)
+    assert DUMMY not in repr(refused.value)
+    assert DUMMY[:6] not in str(refused.value)
+
+
+def test_an_empty_token_is_read_as_unset() -> None:
+    config = ChapConnectionConfig.model_validate({"base_url": BASE_URL, "api_token": ""})
+    assert config.api_token is None
+    client = build_client(config)
+    assert "authorization" not in client.headers
+
+
+@pytest.mark.parametrize("token", [DUMMY, "t" * 32, "a.b-c_d~e+f/g=", "!#$%&'*"])
+def test_a_token_of_visible_ascii_is_sent_as_written(token: str) -> None:
+    config = ChapConnectionConfig.model_validate({"base_url": BASE_URL, "api_token": token})
+    assert build_client(config).headers["authorization"] == f"Bearer {token}"

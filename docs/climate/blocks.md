@@ -289,6 +289,7 @@ Each refusal is minted in the pack's catalogue under the `climate` prefix, so a 
 | --- | --- |
 | `climate.answered` | `{where} answered {status}: {remote}` |
 | `climate.not_json` | `{where} answered with a body that is not JSON` |
+| `climate.connection.bad_header` | `a header's name must be an HTTP token and its value visible ASCII with no leading or trailing whitespace, or it cannot be sent` |
 | `climate.connection.unreachable` | `the open climate service did not answer: {detail}` |
 | `climate.connection.unhealthy` | `the open climate service reports itself {status}` |
 | `climate.connection.read_only` | `the open climate service is read-only: it reads and aggregates, and refuses jobs, ingestions, syncs and exports` |
