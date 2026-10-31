@@ -1,5 +1,6 @@
 """``chap.dataset.import``: store observations as a named Chap dataset, validated first and imported as a job."""
 
+import asyncio
 import json
 from typing import ClassVar, Final, Literal
 
@@ -94,7 +95,7 @@ class ChapDatasetImportOperator(ChapJobOperator[ChapDatasetImportConfig, ChapDat
         rejection fails the step before Chap has imported any of the rows it did accept.
         """
         body = body_of(config, "name", "geojson", "data_to_be_fetched")
-        body["providedData"] = config.observations()
+        body["providedData"] = await asyncio.to_thread(config.observations)
         async with client_for(ctx, config.connection) as client:
             if config.dry_run or config.on_rejected == "fail":
                 checked = await submit(client, MAKE_DATASET_PATH, body, params={"dryRun": "true"})

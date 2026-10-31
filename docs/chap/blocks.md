@@ -57,6 +57,7 @@ Chap as written. Note that `maskedRanges` deletes the target values inside the r
 | `connection` | `string` | yes |  | The code of the chap connection naming the server. |
 | `provided_data` | `object[]` |  |  | Observations as Chap spells them: `{period, orgUnit, value, featureName}`, one per row. |
 | `csv` | `string or null` |  | `null` | A wide Chap CSV, the shape `aggregate_to_chap_csv` writes: `time_period`, `location`, and one column per feature. Each feature cell becomes one observation, sent beside `provided_data`. |
+| `max_observations` | `integer` |  | `500000` | The most observations `csv` may unfold to, columns times rows; a larger one fails the step and sends nothing. |
 | `name` | `string` | yes |  | The name the dataset is stored under. |
 | `geojson` | `object` | yes |  | The org units as a GeoJSON FeatureCollection, each feature's `id` the location its observations name. |
 | `data_to_be_fetched` | `object[]` |  |  | Features Chap fetches itself, as Chap spells them: `{featureName, dataSourceName}`. |
@@ -130,6 +131,7 @@ future-weather provider.
 | `connection` | `string` | yes |  | The code of the chap connection naming the server. |
 | `provided_data` | `object[]` |  |  | Observations as Chap spells them: `{period, orgUnit, value, featureName}`, one per row. |
 | `csv` | `string or null` |  | `null` | A wide Chap CSV, the shape `aggregate_to_chap_csv` writes: `time_period`, `location`, and one column per feature. Each feature cell becomes one observation, sent beside `provided_data`. |
+| `max_observations` | `integer` |  | `500000` | The most observations `csv` may unfold to, columns times rows; a larger one fails the step and sends nothing. |
 | `prediction_setup_id` | `integer` | yes |  | The saved prediction setup to forecast with, which fixes the model and its target. |
 | `name` | `string` | yes |  | The name the prediction is stored under. |
 | `geojson` | `object` | yes |  | The org units as a GeoJSON FeatureCollection, each feature's `id` the location its observations name. |
@@ -349,6 +351,7 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 | `chap.observations.missing` | `a step that sends observations to Chap needs provided_data, csv, or both` |
 | `chap.csv.missing_column` | `the csv has no {column} column, which every row needs` |
 | `chap.csv.bad_value` | `the csv's {column} on line {line} is '{value}', which is not a number` |
+| `chap.csv.too_large` | `the csv unfolds to {count} observations, more than max_observations allows ({limit})` |
 | `chap.dataset.rejected` | `Chap rejected {count} of the observations and on_rejected is fail, so nothing was imported: {detail}` |
 | `chap.job.not_submitted` | `{where} answered without a job id to follow` |
 | `chap.alerts.reviewing` | `{reviewed} of {total} reviewed` |

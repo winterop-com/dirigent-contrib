@@ -1,5 +1,6 @@
 """``chap.prediction.run`` forecasts from a saved prediction setup; ``chap.prediction.read`` reads its quantiles."""
 
+import asyncio
 from typing import ClassVar, Final
 
 from pydantic import BaseModel, Field, JsonValue
@@ -73,7 +74,7 @@ class ChapPredictionRunOperator(ChapJobOperator[ChapPredictionRunConfig, ChapPre
         are all refusals, and are never retried.
         """
         body = body_of(config, "name", "geojson", "n_periods")
-        body["providedData"] = config.observations()
+        body["providedData"] = await asyncio.to_thread(config.observations)
         path = run_path(config.prediction_setup_id)
         async with client_for(ctx, config.connection) as client:
             answer = await submit(client, path, body)

@@ -13,12 +13,15 @@ from typing import Final
 from pydantic import ConfigDict, Field, JsonValue, model_validator
 
 from dirigent_contrib.chap.jobs import ChapJobConfig
-from dirigent_contrib.chap.messages import CSV_BAD_VALUE, CSV_MISSING_COLUMN, OBSERVATIONS_MISSING
+from dirigent_contrib.chap.messages import CSV_BAD_VALUE, CSV_MISSING_COLUMN, CSV_TOO_LARGE, OBSERVATIONS_MISSING
 from dirigent_plugin import BlockFailure, ErrorClass
 
 #: The columns of a Chap CSV that are not features.
 PERIOD_COLUMN: Final = "time_period"
 LOCATION_COLUMN: Final = "location"
+
+#: How many observations a CSV may unfold to when the step does not say.
+MAX_OBSERVATIONS: Final = 500_000
 
 
 class PassThroughConfig(ChapJobConfig):
@@ -57,6 +60,9 @@ class ObservationsConfig(PassThroughConfig):
     """A wide Chap CSV, the shape `aggregate_to_chap_csv` writes: `time_period`, `location`, and one
     column per feature. Each feature cell becomes one observation, sent beside `provided_data`."""
 
+    max_observations: int = Field(default=MAX_OBSERVATIONS, ge=1)
+    """The most observations `csv` may unfold to, columns times rows; a larger one fails the step and sends nothing."""
+
     @model_validator(mode="after")
     def _require_observations(self) -> "ObservationsConfig":
         """Refuse a step that sends no observations at all."""
@@ -68,14 +74,15 @@ class ObservationsConfig(PassThroughConfig):
         """Every observation the step sends: the rows as written, then the CSV's cells."""
         rows: list[JsonValue] = list(self.provided_data)
         if self.csv:
-            rows.extend(csv_observations(self.csv))
+            rows.extend(csv_observations(self.csv, self.max_observations))
         return rows
 
 
-def csv_observations(text: str) -> list[JsonValue]:
-    """Unfold a wide Chap CSV into one observation per feature cell.
+def csv_observations(text: str, limit: int = MAX_OBSERVATIONS) -> list[JsonValue]:
+    """Unfold a wide Chap CSV into one observation per feature cell, refusing more than the limit before any is built.
 
-    An empty cell is a missing value and is sent as null, which Chap reads as missing.
+    An empty cell is a missing value and is sent as null, which Chap reads as missing. A row
+    counts for every feature whether or not it has a cell for it, as it is unfolded.
     """
     reader = csv.DictReader(io.StringIO(text))
     columns = reader.fieldnames or []
@@ -83,6 +90,9 @@ def csv_observations(text: str) -> list[JsonValue]:
         if column not in columns:
             raise BlockFailure(CSV_MISSING_COLUMN, error_class=ErrorClass.REJECTED, column=column)
     features = [column for column in columns if column not in (PERIOD_COLUMN, LOCATION_COLUMN)]
+    count = len(features) * (sum(1 for row in csv.reader(io.StringIO(text)) if row) - 1)
+    if count > limit:
+        raise BlockFailure(CSV_TOO_LARGE, error_class=ErrorClass.REJECTED, count=count, limit=limit)
     rows: list[JsonValue] = []
     for line, record in enumerate(reader, start=2):
         for feature in features:
