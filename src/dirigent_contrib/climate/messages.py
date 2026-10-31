@@ -35,4 +35,8 @@ JOB_NO_ASSET = CLIMATE.define(
     "job.no_asset", "job {job}'s results carry no asset named {asset}; they carry {available}"
 )
 
+JOB_ASSET_OUTSIDE = CLIMATE.define(
+    "job.asset_outside", "job {job}'s asset {asset} is not served under the connection's base_url, so it was not read"
+)
+
 EXPORT_REJECTED = CLIMATE.define("export.rejected", "the target refused export {export}: {detail}")
