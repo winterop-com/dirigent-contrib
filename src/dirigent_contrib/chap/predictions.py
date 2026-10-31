@@ -9,7 +9,7 @@ from dirigent_common import BlockModel
 from dirigent_contrib.chap.bodies import ObservationsConfig, body_of
 from dirigent_contrib.chap.connection import client_for
 from dirigent_contrib.chap.jobs import JOB_POLL, ChapJobOperator, job_id_of, submit
-from dirigent_contrib.chap.messages import PREDICTION_NOT_STORED
+from dirigent_contrib.chap.messages import NOT_A_LIST, PREDICTION_NOT_STORED
 from dirigent_contrib.chap.web import call_json, mapping
 from dirigent_plugin import BlockFailure, ConnectionRef, ErrorClass, Operator, OperatorSpec, RemoteHandle, StepContext
 
@@ -130,12 +130,14 @@ class ChapPredictionReadOperator(Operator[ChapPredictionReadConfig, ChapPredicti
 
     async def execute(self, config: ChapPredictionReadConfig, ctx: StepContext) -> ChapPredictionReadOutput:
         """Read the entries once."""
+        path = entries_path(config.prediction_id)
         async with client_for(ctx, config.connection) as client:
             answer = await call_json(
                 client,
                 "GET",
-                entries_path(config.prediction_id),
+                path,
                 params=[("quantiles", str(quantile)) for quantile in config.quantiles],
             )
-        entries = list(answer) if isinstance(answer, list) else []
-        return ChapPredictionReadOutput(entries=entries, count=len(entries))
+        if not isinstance(answer, list):
+            raise BlockFailure(NOT_A_LIST, error_class=ErrorClass.UNKNOWN, where=f"GET {path}")
+        return ChapPredictionReadOutput(entries=list(answer), count=len(answer))
