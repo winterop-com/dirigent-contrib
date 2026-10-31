@@ -71,7 +71,7 @@ Chap as written. Note that `maskedRanges` deletes the target values inside the r
 | `job_id` | `string or null` |  | `null` | The import job Chap ran; null for a dry run. |
 | `imported_count` | `integer` | yes |  | How many locations Chap accepted. |
 | `rejected_count` | `integer` | yes |  | How many observations Chap rejected. |
-| `rejected` | `any[]` |  |  | The first hundred rejections, in Chap's own words. |
+| `rejected` | `any[]` |  |  | The first hundred rejections, up to 64KB of them, in Chap's own words. |
 | `dry_run` | `boolean` |  | `false` | Whether this was a validation only. |
 
 ## `chap.backtest.run`
@@ -337,6 +337,8 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 | `chap.answered` | `{where} answered {status}: {remote}` |
 | `chap.not_json` | `{where} answered with a body that is not JSON` |
 | `chap.connection.bad_api_token` | `an api_token must be visible ASCII with no whitespace, or it cannot be sent as a header value` |
+| `chap.response_too_large` | `{where} answered with more than max_response ({limit} bytes) and the rest was not read; raise max_response if the answer is expected` |
+| `chap.past_deadline` | `{where} took longer than the {seconds} seconds it is allowed` |
 | `chap.connection.unreachable` | `Chap did not answer: {detail}` |
 | `chap.connection.auth_required` | `Chap requires an API token on every call but /system/info, and this connection carries none` |
 | `chap.connection.token_refused` | `Chap refused the API token: {detail}` |

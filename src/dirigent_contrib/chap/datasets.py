@@ -18,6 +18,9 @@ MAKE_DATASET_PATH: Final = "/v1/analytics/make-dataset"
 #: How many rejected rows an output or a refusal carries.
 REJECTED_KEPT: Final = 100
 
+#: How many bytes of rejected rows an output, a log or a handle carries.
+REJECTED_BYTES: Final = 64 * 1024
+
 #: How many rejected rows a refusal names in its message.
 REJECTED_NAMED: Final = 3
 
@@ -66,7 +69,7 @@ class ChapDatasetImportOutput(BlockModel):
     """How many observations Chap rejected."""
 
     rejected: list[JsonValue] = Field(default_factory=list[JsonValue])
-    """The first hundred rejections, in Chap's own words."""
+    """The first hundred rejections, up to 64KB of them, in Chap's own words."""
 
     dry_run: bool = False
     """Whether this was a validation only."""
@@ -101,13 +104,14 @@ class ChapDatasetImportOperator(ChapJobOperator[ChapDatasetImportConfig, ChapDat
                         DATASET_REJECTED,
                         error_class=ErrorClass.REJECTED,
                         count=len(rejected),
-                        detail="; ".join(json.dumps(row) for row in rejected[:REJECTED_NAMED]),
+                        detail="; ".join(json.dumps(row) for row in _kept(rejected)[:REJECTED_NAMED]),
                     )
                 if config.dry_run:
                     return _output(checked, dry_run=True)
             answer = await submit(client, MAKE_DATASET_PATH, body)
         rejected = _rejections(answer)
-        for row in rejected[:REJECTED_KEPT]:
+        kept = _kept(rejected)
+        for row in kept:
             ctx.log.warning("Chap rejected an observation", rejection=row)
         job_id = job_id_of(answer, f"POST {MAKE_DATASET_PATH}")
         ctx.log.info("dataset import submitted", job=job_id)
@@ -116,7 +120,7 @@ class ChapDatasetImportOperator(ChapJobOperator[ChapDatasetImportConfig, ChapDat
             **{
                 IMPORTED: str(answer.get("importedCount") or 0),
                 REJECTED_COUNT: str(len(rejected)),
-                REJECTED: json.dumps(rejected[:REJECTED_KEPT]),
+                REJECTED: json.dumps(kept),
             },
         )
 
@@ -142,6 +146,18 @@ def _rejections(answer: dict[str, JsonValue]) -> list[JsonValue]:
     return list(rejected) if isinstance(rejected, list) else []
 
 
+def _kept(rejected: list[JsonValue]) -> list[JsonValue]:
+    """The rejected rows that are carried on: the first hundred, as far as they fit their bytes."""
+    kept: list[JsonValue] = []
+    size = 0
+    for row in rejected[:REJECTED_KEPT]:
+        size += len(json.dumps(row))
+        if size > REJECTED_BYTES:
+            break
+        kept.append(row)
+    return kept
+
+
 def _output(answer: dict[str, JsonValue], *, dry_run: bool) -> ChapDatasetImportOutput:
     """Read an import summary as the step's output."""
     rejected = _rejections(answer)
@@ -149,6 +165,6 @@ def _output(answer: dict[str, JsonValue], *, dry_run: bool) -> ChapDatasetImport
     return ChapDatasetImportOutput(
         imported_count=imported if isinstance(imported, int) else 0,
         rejected_count=len(rejected),
-        rejected=rejected[:REJECTED_KEPT],
+        rejected=_kept(rejected),
         dry_run=dry_run,
     )

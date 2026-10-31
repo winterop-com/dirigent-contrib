@@ -7,14 +7,17 @@ from typing import ClassVar, Final, cast
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
-from dirigent_common import BlockModel, Duration, HealthReport
+from dirigent_common import BlockModel, Duration, HealthReport, Size
 from dirigent_contrib.chap.messages import (
     BAD_API_TOKEN,
     CONNECTION_AUTH_REQUIRED,
     CONNECTION_TOKEN_REFUSED,
     CONNECTION_UNREACHABLE,
+    PAST_DEADLINE,
+    RESPONSE_TOO_LARGE,
 )
 from dirigent_contrib.chap.web import remote_words
+from dirigent_contrib.limits import BoundedClient, Limits
 from dirigent_plugin import ConnectionKind, ConnectionRef, StepContext
 
 #: The one path Chap always answers without a token, and which says whether it wants one.
@@ -46,7 +49,13 @@ class ChapConnectionConfig(BlockModel):
     """Whether certificates are verified; turning this off is a per-connection decision."""
 
     timeout: Duration = Field(default=timedelta(seconds=30), gt=timedelta(0))
-    """The timeout applied to every request through this connection."""
+    """The timeout applied to each read of every request through this connection."""
+
+    request_deadline: Duration = Field(default=timedelta(minutes=10), gt=timedelta(0))
+    """The longest one request through this connection may take, start to last byte."""
+
+    max_response: Size = Field(default=64 * 1024 * 1024, ge=1)
+    """The most one response through this connection may decode to; a larger one is refused."""
 
     @field_validator("api_token")
     @classmethod
@@ -91,9 +100,23 @@ def build_client(
     return authorize(client, config)
 
 
-def client_for(ctx: StepContext, ref: ConnectionRef) -> httpx2.AsyncClient:
+def bounded(client: httpx2.AsyncClient, config: ChapConnectionConfig) -> BoundedClient:
+    """Hold a client to the connection's limits."""
+    return BoundedClient(
+        client,
+        Limits(
+            max_response=config.max_response,
+            request_deadline=config.request_deadline.total_seconds(),
+            too_large=RESPONSE_TOO_LARGE,
+            past_deadline=PAST_DEADLINE,
+        ),
+    )
+
+
+def client_for(ctx: StepContext, ref: ConnectionRef) -> BoundedClient:
     """The client one block call uses: the one the engine builds for the connection, with its token as a bearer."""
-    return authorize(ctx.http(ref), ctx.connection(ref, ChapConnectionConfig))
+    config = ctx.connection(ref, ChapConnectionConfig)
+    return bounded(authorize(ctx.http(ref), config), config)
 
 
 #: A forecast line rising through three points, over a baseline, on the 24-unit grid.
@@ -120,8 +143,8 @@ class ChapConnectionKind(ConnectionKind):
         """
         settings = settings_of(config)
         try:
-            async with build_client(settings, self._transport) as client:
-                info = await client.get(SYSTEM_INFO_PATH)
+            async with bounded(build_client(settings, self._transport), settings) as client:
+                info = await client.request("GET", SYSTEM_INFO_PATH)
                 if info.is_error:
                     return HealthReport(healthy=False, detail=CONNECTION_UNREACHABLE.render(detail=_said(info)))
                 body = _object(info)
@@ -130,7 +153,7 @@ class ChapConnectionKind(ConnectionKind):
                 if body.get("auth_required") is True and settings.api_token is None:
                     return HealthReport(healthy=False, detail=CONNECTION_AUTH_REQUIRED.render(), version=found)
                 if settings.api_token is not None:
-                    proof = await client.get(CONFIGURED_MODELS_PATH)
+                    proof = await client.request("GET", CONFIGURED_MODELS_PATH)
                     if proof.status_code in (401, 403):
                         detail = CONNECTION_TOKEN_REFUSED.render(detail=remote_words(proof))
                         return HealthReport(healthy=False, detail=detail, version=found)

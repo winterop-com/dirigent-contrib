@@ -8,7 +8,7 @@ from urllib.parse import unquote
 import httpx2
 from pydantic import BaseModel, Field, JsonValue
 
-from dirigent_common import BlockModel
+from dirigent_common import BlockModel, Size
 from dirigent_contrib.climate.connection import client_for
 from dirigent_contrib.climate.graphs import GraphConfig
 from dirigent_contrib.climate.messages import (
@@ -21,6 +21,7 @@ from dirigent_contrib.climate.messages import (
 )
 from dirigent_contrib.climate.payload import Payload, capture
 from dirigent_contrib.climate.web import call, call_json, json_of, mapping, refuse
+from dirigent_contrib.limits import BoundedClient
 from dirigent_contrib.paths import PLAIN_ID_PATTERN, is_plain_id, segment
 from dirigent_plugin import (
     BlockFailure,
@@ -105,7 +106,7 @@ class ClimateJobRunOperator(Operator[ClimateJobRunConfig, ClimateJobRunOutput]):
         """Read the job's status once, writing the log of a failed job into the run."""
         path = job_path(handle.ref)
         async with client_for(ctx, config.connection) as client:
-            response = await client.get(path)
+            response = await client.request("GET", path)
         if response.status_code == 404:
             return ProbeResult(status=ProbeStatus.GONE, message=JOB_UNKNOWN.render(job=handle.ref))
         if response.is_error:
@@ -135,9 +136,11 @@ class ClimateJobRunOperator(Operator[ClimateJobRunConfig, ClimateJobRunOutput]):
 
     async def cancel(self, handle: RemoteHandle, config: ClimateJobRunConfig, ctx: StepContext) -> bool:
         """Ask the service to stop the job."""
-        async with client_for(ctx, config.connection) as client:
-            response = await client.delete(job_path(handle.ref, "/results"))
-        return not response.is_error
+        async with (
+            client_for(ctx, config.connection) as client,
+            client.stream("DELETE", job_path(handle.ref, "/results")) as response,
+        ):
+            return not response.is_error
 
 
 def _created_id(response: httpx2.Response) -> str:
@@ -164,7 +167,7 @@ def _has_parent_segment(path: str) -> bool:
     return any(segment.split(";", 1)[0] == ".." for segment in re.split(r"[/\\]", path))
 
 
-def _under_base_url(client: httpx2.AsyncClient, target: str) -> bool:
+def _under_base_url(client: BoundedClient, target: str) -> bool:
     """Whether the URL the client resolves a target to stays on its ``base_url``, under that URL's path."""
     try:
         url = client.build_request("GET", target).url
@@ -189,6 +192,9 @@ class ClimateJobResultConfig(BlockModel):
     asset: str = RESULT_ASSET
     """The asset of the job's results to download; `result` is the payload a workflow saved, such as
     the DHIS2 dataValueSet `aggregate_to_dhis2_json` writes."""
+
+    max_response: Size | None = None
+    """The most the downloaded asset may decode to; the connection's `max_response` when unset."""
 
 
 class ClimateJobResultOutput(Payload):
@@ -239,6 +245,7 @@ class ClimateJobResultOperator(Operator[ClimateJobResultConfig, ClimateJobResult
                     JOB_ASSET_OUTSIDE, error_class=ErrorClass.REJECTED, job=config.job_id, asset=config.asset
                 )
             async with client.stream("GET", target) as response:
-                payload = await capture(ctx, response, config.asset, f"GET {href}")
+                limit = client.max_response if config.max_response is None else config.max_response
+                payload = await capture(ctx, response, config.asset, f"GET {href}", limit)
         ctx.log.info("downloaded", job=config.job_id, asset=config.asset, size_bytes=payload.size_bytes)
         return ClimateJobResultOutput(**payload.model_dump(), job_id=config.job_id, asset=config.asset, href=href)

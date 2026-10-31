@@ -61,7 +61,7 @@ the org units, and reduces each org unit's pixels with `method`. The payload is 
 the run's scratch and its `uri` is always in the output; a payload no larger than the
 instance's inline limit is also in `value` (JSON) or `text` (CSV). A larger one is read back
 with `storage.read`. The `timeout` is the step's own, because an aggregation over a long range
-takes minutes; it defaults to 5m.
+takes minutes; it defaults to 5m, and limits the whole answer as well as each read.
 
 **Config**
 
@@ -77,7 +77,8 @@ takes minutes; it defaults to 5m.
 | `export` | `string or null` |  | `null` | The named DHIS2 export the instance configures, which `aggregate_to_dhis2_json` saves through. |
 | `period_type` | `string or null` |  | `null` | The period type each time step is written as, for `aggregate_to_chap_csv`: day, week, month, quarter or year; the service's default is month. |
 | `process_graph` | `object or null` |  | `null` | A whole openEO process graph, node id to node, run in place of a workflow. |
-| `timeout` | `string (humane-duration)` |  | `"5m"` | How long the service may take to answer; an aggregation over a long range takes minutes. |
+| `timeout` | `string (humane-duration)` |  | `"5m"` | How long the service may take to answer, start to last byte; an aggregation over a long range takes minutes. |
+| `max_response` | `string (size) or integer or null` |  | `null` | The most this step's answer may decode to; the connection's `max_response` when unset. |
 
 **Output**
 
@@ -156,6 +157,7 @@ every time the engine's at-least-once fetch is replayed.
 | `connection` | `string` | yes |  | The code of the climate connection naming the instance. |
 | `job_id` | `string` | yes |  | The finished batch job, as `climate.job.run` outputs it. |
 | `asset` | `string` |  | `"result"` | The asset of the job's results to download; `result` is the payload a workflow saved, such as the DHIS2 dataValueSet `aggregate_to_dhis2_json` writes. |
+| `max_response` | `string (size) or integer or null` |  | `null` | The most the downloaded asset may decode to; the connection's `max_response` when unset. |
 
 **Output**
 
@@ -290,6 +292,8 @@ Each refusal is minted in the pack's catalogue under the `climate` prefix, so a 
 | `climate.answered` | `{where} answered {status}: {remote}` |
 | `climate.not_json` | `{where} answered with a body that is not JSON` |
 | `climate.connection.bad_header` | `a header's name must be an HTTP token and its value visible ASCII with no leading or trailing whitespace, or it cannot be sent` |
+| `climate.response_too_large` | `{where} answered with more than max_response ({limit} bytes) and the rest was not read; raise max_response if the answer is expected` |
+| `climate.past_deadline` | `{where} took longer than the {seconds} seconds it is allowed` |
 | `climate.connection.unreachable` | `the open climate service did not answer: {detail}` |
 | `climate.connection.unhealthy` | `the open climate service reports itself {status}` |
 | `climate.connection.read_only` | `the open climate service is read-only: it reads and aggregates, and refuses jobs, ingestions, syncs and exports` |

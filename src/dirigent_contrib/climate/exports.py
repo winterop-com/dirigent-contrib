@@ -183,7 +183,7 @@ class ClimateExportOperator(Operator[ClimateExportConfig, ClimateExportOutput]):
         """Read the delivery, or None when the service no longer knows it."""
         path = delivery_path(handle.meta.get(EXPORT_ID, config.export_id), handle.ref)
         async with client_for(ctx, config.connection) as client:
-            response = await client.get(path)
+            response = await client.request("GET", path)
         if response.status_code == 404:
             return None
         if response.is_error:
