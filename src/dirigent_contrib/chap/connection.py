@@ -1,13 +1,19 @@
 """The ``chap`` connection kind: one Chap server, its optional API token, and the client for it."""
 
+import re
 from datetime import timedelta
 from typing import ClassVar, Final, cast
 
 import httpx2
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from dirigent_common import BlockModel, Duration, HealthReport
-from dirigent_contrib.chap.messages import CONNECTION_AUTH_REQUIRED, CONNECTION_TOKEN_REFUSED, CONNECTION_UNREACHABLE
+from dirigent_contrib.chap.messages import (
+    BAD_API_TOKEN,
+    CONNECTION_AUTH_REQUIRED,
+    CONNECTION_TOKEN_REFUSED,
+    CONNECTION_UNREACHABLE,
+)
 from dirigent_contrib.chap.web import remote_words
 from dirigent_plugin import ConnectionKind, ConnectionRef, StepContext
 
@@ -20,21 +26,37 @@ CONFIGURED_MODELS_PATH: Final = "/v1/crud/configured-models"
 #: The header a token travels in.
 AUTHORIZATION: Final = "Authorization"
 
+#: What an API token may hold: visible ASCII, the only text a header value carries unchanged.
+API_TOKEN: Final = re.compile(r"[\x21-\x7e]+")
+
 
 class ChapConnectionConfig(BlockModel):
     """Everything needed to talk to one Chap server."""
+
+    model_config = ConfigDict(hide_input_in_errors=True)
 
     base_url: str = Field(min_length=1)
     """The server root every request path is resolved against, such as `http://localhost:8000`."""
 
     api_token: SecretStr | None = None
-    """The server's API token, sent as `Authorization: Bearer`; leave unset for a server without auth."""
+    """The server's API token, sent as `Authorization: Bearer`: visible ASCII with no whitespace. Leave it unset for
+    a server without auth."""
 
     verify_tls: bool = True
     """Whether certificates are verified; turning this off is a per-connection decision."""
 
     timeout: Duration = Field(default=timedelta(seconds=30), gt=timedelta(0))
     """The timeout applied to every request through this connection."""
+
+    @field_validator("api_token")
+    @classmethod
+    def _token_fits_a_header(cls, token: SecretStr | None) -> SecretStr | None:
+        """Read an empty token as unset, and reject one that cannot be a header value without saying what it held."""
+        if token is None or not token.get_secret_value():
+            return None
+        if API_TOKEN.fullmatch(token.get_secret_value()) is None:
+            raise ValueError(BAD_API_TOKEN.render())
+        return token
 
 
 def settings_of(config: BaseModel) -> ChapConnectionConfig:

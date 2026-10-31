@@ -16,7 +16,9 @@ The service has no authentication of its own.
 
 `headers` is for an instance behind a proxy that wants a header of its own on every request.
 They are stored as written rather than encrypted, so a credential the proxy wants is better
-kept in the proxy than here.
+kept in the proxy than here. A header that cannot be sent, such as a value with the trailing newline
+a pasted or file-read value brings with it, is refused when the connection is created or updated,
+and the refusal does not repeat it.
 
 A block that waits on the service longer than the connection's `timeout` says so itself:
 `climate.aggregate` takes a `timeout` of its own, 5m by default, because an aggregation over a

@@ -1,8 +1,15 @@
 """The ``climate`` connection: its health check, its read-only flag, and the client a block is handed."""
 
 import httpx2
+import pytest
+from pydantic import ValidationError
 
-from dirigent_contrib.climate.connection import ClimateConnectionConfig, ClimateConnectionKind, client_for
+from dirigent_contrib.climate.connection import (
+    ClimateConnectionConfig,
+    ClimateConnectionKind,
+    build_client,
+    client_for,
+)
 from dirigent_contrib.climate.messages import CONNECTION_READ_ONLY
 from dirigent_testing import FakeContext
 from tests.climate.climateserver import BASE_URL, CONNECTION, ClimateServer
@@ -61,3 +68,33 @@ async def test_an_unreachable_service_is_unhealthy_and_the_check_does_not_raise(
 async def test_a_block_sends_the_connections_headers(ctx: FakeContext) -> None:
     async with client_for(ctx.as_context(), CONNECTION) as client:
         assert client.headers["x-proxy-key"] == "k"
+
+
+DUMMY = "DUMMYHEADER4567"
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        pytest.param({"X-Proxy-Key": f"{DUMMY} "}, id="trailing-blank"),
+        pytest.param({"X-Proxy-Key": f" {DUMMY}"}, id="leading-blank"),
+        pytest.param({"X-Proxy-Key": f"{DUMMY}\n"}, id="trailing-lf"),
+        pytest.param({"X-Proxy-Key": f"{DUMMY}\r\n"}, id="trailing-crlf"),
+        pytest.param({"X-Proxy-Key": f"{DUMMY}\nX-Injected: 1"}, id="inner-lf"),
+        pytest.param({"X-Proxy-Key": f"{DUMMY}é"}, id="non-ascii"),
+        pytest.param({f"{DUMMY}\n": "v"}, id="a-name-with-a-line-feed"),
+        pytest.param({f"{DUMMY}: x": "v"}, id="a-name-with-a-colon"),
+    ],
+)
+def test_a_header_that_cannot_be_sent_is_refused_without_repeating_it(headers: dict[str, str]) -> None:
+    with pytest.raises(ValidationError) as refused:
+        ClimateConnectionConfig.model_validate({"base_url": BASE_URL, "headers": headers})
+    assert "cannot be sent" in str(refused.value)
+    assert DUMMY not in str(refused.value)
+    assert DUMMY not in repr(refused.value)
+
+
+@pytest.mark.parametrize("value", ["k", "Bearer abc", "ApiKey  two  spaces", "a=b; c=d", ""])
+def test_a_header_that_can_be_sent_is_kept_as_written(value: str) -> None:
+    config = ClimateConnectionConfig.model_validate({"base_url": BASE_URL, "headers": {"X-Proxy-Key": value}})
+    assert build_client(config).headers["x-proxy-key"] == value

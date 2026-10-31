@@ -336,6 +336,7 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 | --- | --- |
 | `chap.answered` | `{where} answered {status}: {remote}` |
 | `chap.not_json` | `{where} answered with a body that is not JSON` |
+| `chap.connection.bad_api_token` | `an api_token must be visible ASCII with no whitespace, or it cannot be sent as a header value` |
 | `chap.connection.unreachable` | `Chap did not answer: {detail}` |
 | `chap.connection.auth_required` | `Chap requires an API token on every call but /system/info, and this connection carries none` |
 | `chap.connection.token_refused` | `Chap refused the API token: {detail}` |

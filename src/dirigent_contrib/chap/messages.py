@@ -8,6 +8,11 @@ ANSWERED = CHAP.define("answered", "{where} answered {status}: {remote}")
 
 NOT_JSON = CHAP.define("not_json", "{where} answered with a body that is not JSON")
 
+BAD_API_TOKEN = CHAP.define(
+    "connection.bad_api_token",
+    "an api_token must be visible ASCII with no whitespace, or it cannot be sent as a header value",
+)
+
 CONNECTION_UNREACHABLE = CHAP.define("connection.unreachable", "Chap did not answer: {detail}")
 
 CONNECTION_AUTH_REQUIRED = CHAP.define(
