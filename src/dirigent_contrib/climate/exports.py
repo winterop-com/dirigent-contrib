@@ -10,6 +10,7 @@ from dirigent_common import BlockModel
 from dirigent_contrib.climate.connection import client_for
 from dirigent_contrib.climate.messages import EXPORT_REJECTED, JOB_FAILED, JOB_NOT_SUBMITTED, JOB_RUNNING, JOB_UNKNOWN
 from dirigent_contrib.climate.web import call_json, json_of, mapping, refuse
+from dirigent_contrib.paths import PLAIN_ID_PATTERN, is_plain_id, segment
 from dirigent_plugin import (
     BlockFailure,
     ConnectionRef,
@@ -42,12 +43,12 @@ DRY_RUN: Final = "dry_run"
 
 def export_path(export_id: str) -> str:
     """Where a named export is delivered."""
-    return f"/exports/{export_id}"
+    return f"/exports/{segment(export_id)}"
 
 
 def delivery_path(export_id: str, delivery_job_id: str) -> str:
     """Where one delivery is followed."""
-    return f"/exports/{export_id}/jobs/{delivery_job_id}"
+    return f"{export_path(export_id)}/jobs/{segment(delivery_job_id)}"
 
 
 def idempotency_key(ctx: StepContext) -> str:
@@ -68,7 +69,7 @@ class ClimateExportConfig(BlockModel):
     connection: ConnectionRef
     """The code of the climate connection naming the instance."""
 
-    export_id: str = Field(min_length=1)
+    export_id: str = Field(pattern=PLAIN_ID_PATTERN)
     """The named export the instance configures, the same one the job's workflow saved through."""
 
     job_id: str = Field(min_length=1)
@@ -126,7 +127,7 @@ class ClimateExportOperator(Operator[ClimateExportConfig, ClimateExportOutput]):
                 )
             )
         delivery = accepted.get("delivery_job_id")
-        if not isinstance(delivery, str) or not delivery:
+        if not isinstance(delivery, str) or not is_plain_id(delivery):
             raise BlockFailure(JOB_NOT_SUBMITTED, error_class=ErrorClass.UNKNOWN, where=f"POST {path}")
         reused = accepted.get("reused") is True
         ctx.log.info("delivery queued", delivery=delivery, reused=reused)

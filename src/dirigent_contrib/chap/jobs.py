@@ -15,6 +15,7 @@ from dirigent_common import BlockModel
 from dirigent_contrib.chap.connection import client_for
 from dirigent_contrib.chap.messages import JOB_FAILED, JOB_NOT_SUBMITTED, JOB_RUNNING, JOB_UNKNOWN, JOB_UNSETTLED
 from dirigent_contrib.chap.web import call_json, json_of, mapping, refuse
+from dirigent_contrib.paths import is_plain_id, segment
 from dirigent_plugin import (
     BlockFailure,
     ConnectionRef,
@@ -41,7 +42,7 @@ LOG_TAIL: Final = 4000
 
 def job_path(job_id: str, tail: str = "") -> str:
     """The path of one job, or of one of its sub-resources."""
-    return f"/v1/jobs/{job_id}{tail}"
+    return f"/v1/jobs/{segment(job_id)}{tail}"
 
 
 async def read_job(client: httpx2.AsyncClient, job_id: str) -> dict[str, JsonValue] | None:
@@ -148,8 +149,8 @@ async def submit(
 
 
 def job_id_of(answer: dict[str, JsonValue], where: str) -> str:
-    """The job id a submission answered with, refusing an answer without one."""
+    """The job id a submission answered with, refusing an answer without one or with anything but a plain id."""
     job_id = answer.get("id")
-    if not isinstance(job_id, str) or not job_id:
+    if not isinstance(job_id, str) or not is_plain_id(job_id):
         raise BlockFailure(JOB_NOT_SUBMITTED, error_class=ErrorClass.UNKNOWN, where=where)
     return job_id

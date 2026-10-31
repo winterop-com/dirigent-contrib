@@ -14,6 +14,7 @@ from dirigent_common import BlockModel
 from dirigent_contrib.climate.connection import client_for
 from dirigent_contrib.climate.messages import JOB_FAILED, JOB_NOT_SUBMITTED, JOB_RUNNING, JOB_UNKNOWN
 from dirigent_contrib.climate.web import call, json_of, mapping, refuse
+from dirigent_contrib.paths import PLAIN_ID_PATTERN, is_plain_id, segment
 from dirigent_plugin import (
     BlockFailure,
     ConnectionRef,
@@ -46,12 +47,12 @@ INGESTION_POLL: Final = timedelta(seconds=30)
 
 def sync_path(dataset_id: str) -> str:
     """Where one managed dataset is synced."""
-    return f"/sync/{dataset_id}"
+    return f"/sync/{segment(dataset_id)}"
 
 
 def ingestion_job_path(job_id: str) -> str:
     """Where one ingestion or sync job is followed."""
-    return f"{INGESTION_JOBS_PATH}/{job_id}"
+    return f"{INGESTION_JOBS_PATH}/{segment(job_id)}"
 
 
 class ClimateIngestionOutput(BlockModel):
@@ -76,7 +77,7 @@ class ClimateIngestionConfig(BlockModel):
     connection: ConnectionRef
     """The code of the climate connection naming the instance."""
 
-    dataset_id: str = Field(min_length=1)
+    dataset_id: str = Field(pattern=PLAIN_ID_PATTERN)
     """The dataset the job brings in or forward."""
 
 
@@ -94,7 +95,7 @@ class ClimateIngestionOperator[ConfigT: ClimateIngestionConfig](Operator[ConfigT
         job_id = location.rsplit("/", 1)[-1] if location else ""
         if not job_id:
             job_id = str(mapping(json_of(response, where)).get("ingestion_id") or "")
-        if not job_id:
+        if not is_plain_id(job_id):
             raise BlockFailure(JOB_NOT_SUBMITTED, error_class=ErrorClass.UNKNOWN, where=where)
         ctx.log.info("job queued", job=job_id)
         return RemoteHandle(block_id=self.spec.id, ref=job_id)
