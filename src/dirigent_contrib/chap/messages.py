@@ -21,6 +21,8 @@ RESPONSE_TOO_LARGE = CHAP.define(
 
 PAST_DEADLINE = CHAP.define("past_deadline", "{where} took longer than the {seconds} seconds it is allowed")
 
+NOT_A_LIST = CHAP.define("not_a_list", "{where} answered with something other than a list")
+
 CONNECTION_UNREACHABLE = CHAP.define("connection.unreachable", "Chap did not answer: {detail}")
 
 CONNECTION_AUTH_REQUIRED = CHAP.define(
@@ -58,6 +60,13 @@ DATASET_REJECTED = CHAP.define(
     "dataset.rejected",
     "Chap rejected {count} of the observations and on_rejected is fail, so nothing was imported: {detail}",
 )
+
+DATASET_NOT_VALIDATED = CHAP.define(
+    "dataset.not_validated",
+    "{where} answered a validation without a list under rejected, so nothing is known about the observations",
+)
+
+THRESHOLDS_NO_ENTRIES = CHAP.define("thresholds.no_entries", "{where} answered without a list of entries")
 
 JOB_NOT_SUBMITTED = CHAP.define("job.not_submitted", "{where} answered without a job id to follow")
 

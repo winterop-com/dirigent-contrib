@@ -7,8 +7,9 @@ from pydantic import BaseModel, Field, JsonValue
 from dirigent_common import BlockModel
 from dirigent_contrib.chap.bodies import PassThroughConfig, body_of
 from dirigent_contrib.chap.connection import client_for
+from dirigent_contrib.chap.messages import THRESHOLDS_NO_ENTRIES
 from dirigent_contrib.chap.web import call_json, mapping
-from dirigent_plugin import Operator, OperatorSpec, StepContext
+from dirigent_plugin import BlockFailure, ErrorClass, Operator, OperatorSpec, StepContext
 
 THRESHOLDS_PATH: Final = "/v1/analytics/thresholds"
 
@@ -65,8 +66,10 @@ class ChapThresholdsOperator(Operator[ChapThresholdsConfig, ChapThresholdsOutput
             answer = mapping(await call_json(client, "POST", THRESHOLDS_PATH, json=body))
         lines = answer.get("lines")
         entries = answer.get("entries")
+        if not isinstance(entries, list):
+            raise BlockFailure(THRESHOLDS_NO_ENTRIES, error_class=ErrorClass.UNKNOWN, where=f"POST {THRESHOLDS_PATH}")
         return ChapThresholdsOutput(
             params=answer.get("params"),
             lines=list(lines) if isinstance(lines, list) else [],
-            entries=list(entries) if isinstance(entries, list) else [],
+            entries=list(entries),
         )

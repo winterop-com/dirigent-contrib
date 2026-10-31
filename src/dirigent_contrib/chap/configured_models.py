@@ -6,8 +6,9 @@ from pydantic import BaseModel, JsonValue
 
 from dirigent_common import BlockModel
 from dirigent_contrib.chap.connection import CONFIGURED_MODELS_PATH, client_for
+from dirigent_contrib.chap.messages import NOT_A_LIST
 from dirigent_contrib.chap.web import call_json
-from dirigent_plugin import ConnectionRef, Operator, OperatorSpec, StepContext
+from dirigent_plugin import BlockFailure, ConnectionRef, ErrorClass, Operator, OperatorSpec, StepContext
 
 
 class ChapModelsListConfig(BlockModel):
@@ -38,5 +39,6 @@ class ChapModelsListOperator(Operator[ChapModelsListConfig, ChapModelsListOutput
         """Read the list once."""
         async with client_for(ctx, config.connection) as client:
             answer = await call_json(client, "GET", CONFIGURED_MODELS_PATH)
-        models = list(answer) if isinstance(answer, list) else []
-        return ChapModelsListOutput(models=models, count=len(models))
+        if not isinstance(answer, list):
+            raise BlockFailure(NOT_A_LIST, error_class=ErrorClass.UNKNOWN, where=f"GET {CONFIGURED_MODELS_PATH}")
+        return ChapModelsListOutput(models=list(answer), count=len(answer))

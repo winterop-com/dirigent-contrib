@@ -43,7 +43,8 @@ dataset's id, read from `/v1/jobs/{id}/database_result`.
 `dry_run: true` sends `dryRun=true` and ends at the validation, with no job. Under
 `on_rejected: fail` the step validates with a dry run first and fails, as a refusal, when Chap
 would reject anything, so nothing is imported; `warn` imports what Chap accepts and logs each
-rejection.
+rejection. A validation answered with no list under `rejected` fails the step with
+`chap.dataset.not_validated`, under `dry_run` and `on_rejected: fail` alike.
 
 Observations arrive as rows Chap spells for itself in `provided_data`, as a wide Chap CSV in
 `csv`, or both. The CSV is unfolded into one observation per feature cell; an empty or `nan`
@@ -153,7 +154,8 @@ Read a Chap prediction's quantiles.
 Not idempotent.
 
 Reads `GET /v1/analytics/prediction-entry/{predictionId}` with one `quantiles` parameter per
-quantile, and hands on the entries as Chap answers with them.
+quantile, and hands on the entries as Chap answers with them. An answer that is not a list fails
+the step with `chap.not_a_list`, so a forecast that could not be read is not taken for an empty one.
 
 **Config**
 
@@ -176,7 +178,8 @@ List the models a Chap server has configured.
 
 Not idempotent.
 
-Reads `GET /v1/crud/configured-models` and hands on each model as Chap describes it.
+Reads `GET /v1/crud/configured-models` and hands on each model as Chap describes it. An answer that
+is not a list fails the step with `chap.not_a_list`.
 
 **Config**
 
@@ -201,7 +204,8 @@ Posts `POST /v1/analytics/thresholds` and hands on the answer. `params.type` sel
 strategy; `GET /v1/analytics/thresholds/strategies` lists every strategy a server has, and the
 two Chap ships are `seasonal` (`stdMultiplier`) and `percentile` (`quantile`,
 `baselineYears`). A line parameter given as a list produces one threshold line per entry, so
-`quantile: [0.25, 0.75]` is the endemic channel's band. Any undeclared key is sent as written.
+`quantile: [0.25, 0.75]` is the endemic channel's band. Any undeclared key is sent as written. An
+answer with no list under `entries` fails the step with `chap.thresholds.no_entries`.
 
 **Config**
 
@@ -347,6 +351,7 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 | `chap.connection.bad_api_token` | `an api_token must be visible ASCII with no whitespace, or it cannot be sent as a header value` |
 | `chap.response_too_large` | `{where} answered with more than max_response ({limit} bytes) and the rest was not read; raise max_response if the answer is expected` |
 | `chap.past_deadline` | `{where} took longer than the {seconds} seconds it is allowed` |
+| `chap.not_a_list` | `{where} answered with something other than a list` |
 | `chap.connection.unreachable` | `Chap did not answer: {detail}` |
 | `chap.connection.auth_required` | `Chap requires an API token on every call but /system/info, and this connection carries none` |
 | `chap.connection.token_refused` | `Chap refused the API token: {detail}` |
@@ -359,6 +364,8 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 | `chap.csv.bad_value` | `the csv's {column} on line {line} is '{value}', which is not a number` |
 | `chap.csv.too_large` | `the csv unfolds to {count} observations, more than max_observations allows ({limit})` |
 | `chap.dataset.rejected` | `Chap rejected {count} of the observations and on_rejected is fail, so nothing was imported: {detail}` |
+| `chap.dataset.not_validated` | `{where} answered a validation without a list under rejected, so nothing is known about the observations` |
+| `chap.thresholds.no_entries` | `{where} answered without a list of entries` |
 | `chap.job.not_submitted` | `{where} answered without a job id to follow` |
 | `chap.prediction.not_stored` | `job {job} finished without an integer prediction id` |
 | `chap.alerts.reviewing` | `{reviewed} of {total} reviewed` |

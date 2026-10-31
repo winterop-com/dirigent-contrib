@@ -10,7 +10,7 @@ from dirigent_common import BlockModel
 from dirigent_contrib.chap.bodies import ObservationsConfig, body_of
 from dirigent_contrib.chap.connection import client_for
 from dirigent_contrib.chap.jobs import JOB_POLL, ChapJobOperator, job_id_of, submit
-from dirigent_contrib.chap.messages import DATASET_REJECTED
+from dirigent_contrib.chap.messages import DATASET_NOT_VALIDATED, DATASET_REJECTED
 from dirigent_contrib.chap.web import mapping
 from dirigent_plugin import BlockFailure, ErrorClass, OperatorSpec, RemoteHandle, StepContext
 
@@ -99,6 +99,10 @@ class ChapDatasetImportOperator(ChapJobOperator[ChapDatasetImportConfig, ChapDat
         async with client_for(ctx, config.connection) as client:
             if config.dry_run or config.on_rejected == "fail":
                 checked = await submit(client, MAKE_DATASET_PATH, body, params={"dryRun": "true"})
+                if not isinstance(checked.get(REJECTED), list):
+                    raise BlockFailure(
+                        DATASET_NOT_VALIDATED, error_class=ErrorClass.UNKNOWN, where=f"POST {MAKE_DATASET_PATH}"
+                    )
                 rejected = _rejections(checked)
                 if rejected and config.on_rejected == "fail":
                     raise BlockFailure(
