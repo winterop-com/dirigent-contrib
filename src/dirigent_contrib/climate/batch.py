@@ -12,6 +12,7 @@ from dirigent_contrib.climate.graphs import GraphConfig
 from dirigent_contrib.climate.messages import JOB_FAILED, JOB_NO_ASSET, JOB_NOT_SUBMITTED, JOB_RUNNING, JOB_UNKNOWN
 from dirigent_contrib.climate.payload import Payload, capture
 from dirigent_contrib.climate.web import call, call_json, json_of, mapping, refuse
+from dirigent_contrib.paths import PLAIN_ID_PATTERN, is_plain_id, segment
 from dirigent_plugin import (
     BlockFailure,
     ConnectionRef,
@@ -47,7 +48,7 @@ RESULT_ASSET: Final = "result"
 
 def job_path(job_id: str, tail: str = "") -> str:
     """The path of one batch job, or of one of its sub-resources."""
-    return f"{JOBS_PATH}/{job_id}{tail}"
+    return f"{JOBS_PATH}/{segment(job_id)}{tail}"
 
 
 class ClimateJobRunConfig(GraphConfig):
@@ -131,19 +132,20 @@ class ClimateJobRunOperator(Operator[ClimateJobRunConfig, ClimateJobRunOutput]):
 
 
 def _created_id(response: httpx2.Response) -> str:
-    """The id a job was created under: in the body, or else in the ``Location`` it was answered with."""
-    where = f"POST {JOBS_PATH}"
+    """The id a job was created under: in the body, or else in the ``Location`` it was answered with.
+
+    An answer whose id is not one plain id is refused, as one without an id is.
+    """
     try:
         body: JsonValue = response.json()
     except ValueError:
         body = None
     job_id = mapping(body).get("id")
-    if isinstance(job_id, str) and job_id:
-        return job_id
-    location = response.headers.get("location", "").rstrip("/")
-    if location:
-        return location.rsplit("/", 1)[-1]
-    raise BlockFailure(JOB_NOT_SUBMITTED, error_class=ErrorClass.UNKNOWN, where=where)
+    if not isinstance(job_id, str) or not job_id:
+        job_id = response.headers.get("location", "").rstrip("/").rsplit("/", 1)[-1]
+    if not is_plain_id(job_id):
+        raise BlockFailure(JOB_NOT_SUBMITTED, error_class=ErrorClass.UNKNOWN, where=f"POST {JOBS_PATH}")
+    return job_id
 
 
 class ClimateJobResultConfig(BlockModel):
@@ -152,7 +154,7 @@ class ClimateJobResultConfig(BlockModel):
     connection: ConnectionRef
     """The code of the climate connection naming the instance."""
 
-    job_id: str = Field(min_length=1)
+    job_id: str = Field(pattern=PLAIN_ID_PATTERN)
     """The finished batch job, as `climate.job.run` outputs it."""
 
     asset: str = RESULT_ASSET

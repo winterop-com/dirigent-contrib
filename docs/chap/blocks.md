@@ -314,6 +314,13 @@ step that releases what was approved when a review's deadline passed.
 | `pending` | `any[]` |  |  | The alerts nobody has decided on yet, in the same shape. |
 | `counts` | `object` |  |  | How many alerts there are, and how many of them are approved, declined and pending. |
 
+## What a path may carry
+
+A job id Chap answers with goes into the path of every poll, read and cancel, so it must be one id:
+a letter or a digit, then letters, digits, `.`, `_` and `-`, at most 256 characters. Any other fails
+the step with `chap.job.not_submitted`. Every other value in a path, such as `prediction_id`, is an
+integer.
+
 ## How a failure is classified
 
 A refusal the server answers with is classified by its status: a 5xx and a 429 are

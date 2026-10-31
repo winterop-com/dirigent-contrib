@@ -263,6 +263,14 @@ with that answer and a null `job_id`.
 | `finished_at` | `string or null` |  | `null` | When the job finished, in the service's own timestamp. |
 | `result` | `any` |  | `null` | The job's result, or the inline answer, exactly as the service gives it. |
 
+## What a path may carry
+
+`climate.sync`'s `dataset_id`, `climate.ingest`'s `dataset_id`, `climate.export`'s `export_id` and
+`climate.job.result`'s `job_id` go into a request's path or name what does, so each must be one id:
+a letter or a digit, then letters, digits, `.`, `_` and `-`, at most 256 characters. Anything else
+refuses the config and sends nothing. A job id the service answers with is held to the same rule,
+in a body or a `Location`, and any other fails the step with `climate.job.not_submitted`.
+
 ## How a failure is classified
 
 A refusal the server answers with is classified by its status: a 5xx and a 429 are
