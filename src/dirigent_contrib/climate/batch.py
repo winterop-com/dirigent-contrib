@@ -1,7 +1,9 @@
 """``climate.job.run`` runs a process graph as an openEO batch job; ``climate.job.result`` downloads what it made."""
 
+import re
 from datetime import timedelta
 from typing import ClassVar, Final
+from urllib.parse import unquote
 
 import httpx2
 from pydantic import BaseModel, Field, JsonValue
@@ -9,7 +11,14 @@ from pydantic import BaseModel, Field, JsonValue
 from dirigent_common import BlockModel
 from dirigent_contrib.climate.connection import client_for
 from dirigent_contrib.climate.graphs import GraphConfig
-from dirigent_contrib.climate.messages import JOB_FAILED, JOB_NO_ASSET, JOB_NOT_SUBMITTED, JOB_RUNNING, JOB_UNKNOWN
+from dirigent_contrib.climate.messages import (
+    JOB_ASSET_OUTSIDE,
+    JOB_FAILED,
+    JOB_NO_ASSET,
+    JOB_NOT_SUBMITTED,
+    JOB_RUNNING,
+    JOB_UNKNOWN,
+)
 from dirigent_contrib.climate.payload import Payload, capture
 from dirigent_contrib.climate.web import call, call_json, json_of, mapping, refuse
 from dirigent_contrib.paths import PLAIN_ID_PATTERN, is_plain_id, segment
@@ -148,6 +157,26 @@ def _created_id(response: httpx2.Response) -> str:
     return job_id
 
 
+def _has_parent_segment(path: str) -> bool:
+    """Whether a URL path climbs, under any number of percent-encodings, a backslash or a ``;`` parameter."""
+    while (decoded := unquote(path)) != path:
+        path = decoded
+    return any(segment.split(";", 1)[0] == ".." for segment in re.split(r"[/\\]", path))
+
+
+def _under_base_url(client: httpx2.AsyncClient, target: str) -> bool:
+    """Whether the URL the client resolves a target to stays on its ``base_url``, under that URL's path."""
+    try:
+        url = client.build_request("GET", target).url
+    except httpx2.InvalidURL:
+        return False
+    base = client.base_url
+    if (url.scheme, url.host, url.port) != (base.scheme, base.host, base.port) or url.userinfo:
+        return False
+    path = url.raw_path.partition(b"?")[0]
+    return path.startswith(base.raw_path.partition(b"?")[0]) and not _has_parent_segment(path.decode("ascii"))
+
+
 class ClimateJobResultConfig(BlockModel):
     """Which finished job's payload to download."""
 
@@ -188,7 +217,8 @@ class ClimateJobResultOperator(Operator[ClimateJobResultConfig, ClimateJobResult
         """Find the asset in the job's results item, and stream it to storage.
 
         An asset's ``href`` is read against the connection's ``base_url``, so an instance served
-        under a path prefix is reached under it.
+        under a path prefix is reached under it. One that resolves anywhere else is refused
+        before any request is sent for it.
         """
         async with client_for(ctx, config.connection) as client:
             results = await call_json(client, "GET", job_path(config.job_id, "/results"))
@@ -204,6 +234,10 @@ class ClimateJobResultOperator(Operator[ClimateJobResultConfig, ClimateJobResult
                     available=", ".join(sorted(assets)) or "none",
                 )
             target = href if "://" in href else href.lstrip("/")
+            if not _under_base_url(client, target):
+                raise BlockFailure(
+                    JOB_ASSET_OUTSIDE, error_class=ErrorClass.REJECTED, job=config.job_id, asset=config.asset
+                )
             async with client.stream("GET", target) as response:
                 payload = await capture(ctx, response, config.asset, f"GET {href}")
         ctx.log.info("downloaded", job=config.job_id, asset=config.asset, size_bytes=payload.size_bytes)

@@ -134,7 +134,10 @@ Not idempotent.
 
 Reads the job's results item, finds the asset named `asset`, and streams its `href` into the
 run's storage; the `href` is read under the connection's `base_url`, so an instance served
-under a path prefix such as `/ocs` is reached there. The output is the same as
+under a path prefix such as `/ocs` is reached there. An `href` that resolves anywhere else fails
+the step as `climate.job.asset_outside` before any request is sent for it: another scheme, host or
+port, a user in the URL, a path outside the prefix, or a parent segment in any encoding. The
+connection's headers therefore stay on its own `base_url`. The output is the same as
 `climate.aggregate`'s: always a `uri`, and the payload in `value` or `text` when it is small. A
 DHIS2 dataValueSet from `aggregate_to_dhis2_json` feeds `dhis2.data_value_set_import`
 directly, through `storage.read` when it is larger than the inline limit.
@@ -297,4 +300,5 @@ Each refusal is minted in the pack's catalogue under the `climate` prefix, so a 
 | `climate.job.failed` | `job {job} ended {status}: {detail}` |
 | `climate.job.unknown` | `the open climate service no longer knows job {job}` |
 | `climate.job.no_asset` | `job {job}'s results carry no asset named {asset}; they carry {available}` |
+| `climate.job.asset_outside` | `job {job}'s asset {asset} is not served under the connection's base_url, so it was not read` |
 | `climate.export.rejected` | `the target refused export {export}: {detail}` |
