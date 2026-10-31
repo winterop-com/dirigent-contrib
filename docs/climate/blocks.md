@@ -187,6 +187,12 @@ and `successful` ends with the export report -- unless the report's `outcome` is
 fails the step as a refusal. The service delivers with its own DHIS2 credentials; a delivery
 cannot be cancelled from here.
 
+`dry_run` in the output is what the step asked for, so the service's word is held to it. An
+acceptance whose `dry_run` differs, an outcome of `success` under a dry run, and an outcome of
+`dry_run` under a delivery each fail with `climate.export.dry_run_differs`, and a report with no
+`outcome` fails with `climate.export.no_outcome`. Whatever the service already did stands. The
+outcomes `partial`, `cancelled` and `unknown` end the step, and what follows reads them.
+
 **Config**
 
 | Field | Type | Required | Default | Description |
@@ -203,7 +209,7 @@ cannot be cancelled from here.
 | `delivery_job_id` | `string` | yes |  | The delivery job the service ran. |
 | `export_id` | `string` | yes |  | The export that was delivered. |
 | `status` | `string` | yes |  | The delivery job's final status. |
-| `outcome` | `string or null` |  | `null` | The report's outcome: success, partial, dry_run, cancelled or unknown. |
+| `outcome` | `string` | yes |  | The report's outcome: success, partial, dry_run, cancelled or unknown. |
 | `reused` | `boolean` |  | `false` | Whether the service answered with a delivery this attempt had already queued. |
 | `dry_run` | `boolean` |  | `false` | Whether this was a validation only. |
 | `report` | `any` |  | `null` | The export report exactly as the service answers with it: counts, conflicts and the target's task ids. |
@@ -236,7 +242,7 @@ record, and `failed` or `cancelled` fail with its error. Cancelling the step sen
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `job_id` | `string or null` |  | `null` | The job the service ran; null when it did the work inline and answered with it. |
-| `status` | `string` | yes |  | The job's final status, or the inline answer's. |
+| `status` | `string` | yes |  | The job's final status or the inline answer's, and `waiting_for_source` whenever a sync says so. |
 | `finished_at` | `string or null` |  | `null` | When the job finished, in the service's own timestamp. |
 | `result` | `any` |  | `null` | The job's result, or the inline answer, exactly as the service gives it. |
 
@@ -248,7 +254,15 @@ Not idempotent. Polls every 30s unless the step says otherwise.
 
 Posts `POST /sync/{dataset_id}` with `Prefer: respond-async` and follows the job exactly as
 `climate.ingest` does. A sync the service answers at once, rather than with a job, ends the step
-with that answer and a null `job_id`.
+with that answer and a null `job_id`, when the answer is a 2xx whose `status` is `completed`,
+`up_to_date` or `waiting_for_source`. Any other answer fails the step with
+`climate.job.not_finished_inline`, here and in `climate.ingest`.
+
+Two words a sync says mean the same whether they come in that answer or in a finished job's
+`result`. `waiting_for_source` ends the step with that word in `status`. It wrote nothing: a newer
+release is declared and the source cannot serve it across the span already held, so the dataset is
+not current, for what follows to read. `not_syncable`, which a static dataset always answers, fails
+the step as a refusal with `climate.job.not_syncable`.
 
 **Config**
 
@@ -264,7 +278,7 @@ with that answer and a null `job_id`.
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `job_id` | `string or null` |  | `null` | The job the service ran; null when it did the work inline and answered with it. |
-| `status` | `string` | yes |  | The job's final status, or the inline answer's. |
+| `status` | `string` | yes |  | The job's final status or the inline answer's, and `waiting_for_source` whenever a sync says so. |
 | `finished_at` | `string or null` |  | `null` | When the job finished, in the service's own timestamp. |
 | `result` | `any` |  | `null` | The job's result, or the inline answer, exactly as the service gives it. |
 
@@ -306,4 +320,8 @@ Each refusal is minted in the pack's catalogue under the `climate` prefix, so a 
 | `climate.job.unknown` | `the open climate service no longer knows job {job}` |
 | `climate.job.no_asset` | `job {job}'s results carry no asset named {asset}; they carry {available}` |
 | `climate.job.asset_outside` | `job {job}'s asset {asset} is not served under the connection's base_url, so it was not read` |
+| `climate.job.not_finished_inline` | `{where} answered {status} saying {said}, which is neither a job to follow nor finished work` |
+| `climate.job.not_syncable` | `{where} answered that the dataset is not syncable, so this step can never do anything` |
 | `climate.export.rejected` | `the target refused export {export}: {detail}` |
+| `climate.export.dry_run_differs` | `export {export} was asked with dry_run {asked}, and the service answered {answered}` |
+| `climate.export.no_outcome` | `delivery {job} of export {export} ended with no report or outcome` |

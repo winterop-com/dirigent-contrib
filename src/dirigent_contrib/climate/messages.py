@@ -53,4 +53,21 @@ JOB_ASSET_OUTSIDE = CLIMATE.define(
     "job.asset_outside", "job {job}'s asset {asset} is not served under the connection's base_url, so it was not read"
 )
 
+JOB_NOT_FINISHED_INLINE = CLIMATE.define(
+    "job.not_finished_inline",
+    "{where} answered {status} saying {said}, which is neither a job to follow nor finished work",
+)
+
+JOB_NOT_SYNCABLE = CLIMATE.define(
+    "job.not_syncable", "{where} answered that the dataset is not syncable, so this step can never do anything"
+)
+
 EXPORT_REJECTED = CLIMATE.define("export.rejected", "the target refused export {export}: {detail}")
+
+EXPORT_DRY_RUN_DIFFERS = CLIMATE.define(
+    "export.dry_run_differs", "export {export} was asked with dry_run {asked}, and the service answered {answered}"
+)
+
+EXPORT_NO_OUTCOME = CLIMATE.define(
+    "export.no_outcome", "delivery {job} of export {export} ended with no report or outcome"
+)

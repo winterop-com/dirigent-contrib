@@ -12,8 +12,15 @@ from pydantic import BaseModel, Field, JsonValue
 
 from dirigent_common import BlockModel
 from dirigent_contrib.climate.connection import client_for
-from dirigent_contrib.climate.messages import JOB_FAILED, JOB_NOT_SUBMITTED, JOB_RUNNING, JOB_UNKNOWN
-from dirigent_contrib.climate.web import call, json_of, mapping, refuse
+from dirigent_contrib.climate.messages import (
+    JOB_FAILED,
+    JOB_NOT_FINISHED_INLINE,
+    JOB_NOT_SUBMITTED,
+    JOB_NOT_SYNCABLE,
+    JOB_RUNNING,
+    JOB_UNKNOWN,
+)
+from dirigent_contrib.climate.web import QUOTED, call, json_of, mapping, refuse
 from dirigent_contrib.paths import PLAIN_ID_PATTERN, is_plain_id, segment
 from dirigent_plugin import (
     BlockFailure,
@@ -41,6 +48,15 @@ WAITING: Final = frozenset({"accepted", "running", "retrying"})
 #: The status of a job that finished well.
 SUCCESSFUL: Final = "successful"
 
+#: The status of a sync that wrote nothing because the source cannot serve a declared release yet.
+WAITING_FOR_SOURCE: Final = "waiting_for_source"
+
+#: The statuses an answer holding the work itself, rather than a job, may end a step with.
+INLINE_SUCCESS: Final = frozenset({"completed", "up_to_date", WAITING_FOR_SOURCE})
+
+#: The status of a sync of a static dataset, which no retry changes.
+NOT_SYNCABLE: Final = "not_syncable"
+
 #: How often an ingestion or sync is probed when the step does not say.
 INGESTION_POLL: Final = timedelta(seconds=30)
 
@@ -62,7 +78,7 @@ class ClimateIngestionOutput(BlockModel):
     """The job the service ran; null when it did the work inline and answered with it."""
 
     status: str
-    """The job's final status, or the inline answer's."""
+    """The job's final status or the inline answer's, and `waiting_for_source` whenever a sync says so."""
 
     finished_at: str | None = None
     """When the job finished, in the service's own timestamp."""
@@ -87,10 +103,21 @@ class ClimateIngestionOperator[ConfigT: ClimateIngestionConfig](Operator[ConfigT
     output_model: ClassVar[type[BaseModel]] = ClimateIngestionOutput
 
     def follow(self, response: httpx2.Response, where: str, ctx: StepContext) -> ClimateIngestionOutput | RemoteHandle:
-        """The handle that follows a queued job, or the output of work the service did inline."""
+        """The handle that follows a queued job, or the output of work the service says it finished inline."""
         if response.status_code != 202:
             answer = mapping(json_of(response, where))
-            return ClimateIngestionOutput(status=str(answer.get("status") or ""), result=answer)
+            status = answer.get("status")
+            if status == NOT_SYNCABLE:
+                raise BlockFailure(JOB_NOT_SYNCABLE, error_class=ErrorClass.REJECTED, where=where)
+            if not response.is_success or not isinstance(status, str) or status not in INLINE_SUCCESS:
+                raise BlockFailure(
+                    JOB_NOT_FINISHED_INLINE,
+                    error_class=ErrorClass.UNKNOWN,
+                    where=where,
+                    status=response.status_code,
+                    said=str(status)[:QUOTED],
+                )
+            return ClimateIngestionOutput(status=status, result=answer)
         location = response.headers.get("location", "").rstrip("/")
         job_id = location.rsplit("/", 1)[-1] if location else ""
         if not job_id:
@@ -133,14 +160,18 @@ class ClimateIngestionOperator[ConfigT: ClimateIngestionConfig](Operator[ConfigT
         )
 
     async def fetch(self, handle: RemoteHandle, config: ConfigT, ctx: StepContext) -> ClimateIngestionOutput:
-        """Read the finished job's record."""
+        """Read the finished job's record, holding a sync's own word in its result to what it means."""
         record = await self.read(handle, config, ctx)
         if record is None:
             raise BlockFailure(JOB_UNKNOWN, error_class=ErrorClass.TRANSIENT, job=handle.ref)
+        said = mapping(record.get("result")).get("status")
+        if said == NOT_SYNCABLE:
+            where = f"GET {ingestion_job_path(handle.ref)}"
+            raise BlockFailure(JOB_NOT_SYNCABLE, error_class=ErrorClass.REJECTED, where=where)
         finished = record.get("finishedAt")
         return ClimateIngestionOutput(
             job_id=handle.ref,
-            status=str(record.get("status") or ""),
+            status=WAITING_FOR_SOURCE if said == WAITING_FOR_SOURCE else str(record.get("status") or ""),
             finished_at=str(finished) if finished else None,
             result=record.get("result"),
         )
