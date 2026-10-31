@@ -50,6 +50,10 @@ CSV_MISSING_COLUMN = CHAP.define("csv.missing_column", "the csv has no {column} 
 
 CSV_BAD_VALUE = CHAP.define("csv.bad_value", "the csv's {column} on line {line} is '{value}', which is not a number")
 
+CSV_TOO_LARGE = CHAP.define(
+    "csv.too_large", "the csv unfolds to {count} observations, more than max_observations allows ({limit})"
+)
+
 DATASET_REJECTED = CHAP.define(
     "dataset.rejected",
     "Chap rejected {count} of the observations and on_rejected is fail, so nothing was imported: {detail}",
