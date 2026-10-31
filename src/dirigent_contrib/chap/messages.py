@@ -13,6 +13,14 @@ BAD_API_TOKEN = CHAP.define(
     "an api_token must be visible ASCII with no whitespace, or it cannot be sent as a header value",
 )
 
+RESPONSE_TOO_LARGE = CHAP.define(
+    "response_too_large",
+    "{where} answered with more than max_response ({limit} bytes) and the rest was not read; "
+    "raise max_response if the answer is expected",
+)
+
+PAST_DEADLINE = CHAP.define("past_deadline", "{where} took longer than the {seconds} seconds it is allowed")
+
 CONNECTION_UNREACHABLE = CHAP.define("connection.unreachable", "Chap did not answer: {detail}")
 
 CONNECTION_AUTH_REQUIRED = CHAP.define(

@@ -8,7 +8,6 @@ on an alert: they record them, read where each one stands, and hand the decided 
 from datetime import timedelta
 from typing import ClassVar, Final, Literal
 
-import httpx2
 from pydantic import BaseModel, Field, JsonValue
 
 from dirigent_common import BlockModel
@@ -16,6 +15,7 @@ from dirigent_contrib.chap.bodies import PassThroughConfig, body_of
 from dirigent_contrib.chap.connection import client_for
 from dirigent_contrib.chap.messages import ALERTS_NOT_A_LIST, ALERTS_NOT_RECORDED, ALERTS_REVIEWING
 from dirigent_contrib.chap.web import call_json, mapping
+from dirigent_contrib.limits import BoundedClient
 from dirigent_plugin import (
     BlockFailure,
     ConnectionRef,
@@ -94,7 +94,7 @@ class ChapAlertsOutput(BlockModel):
 
 
 async def list_alerts(
-    client: httpx2.AsyncClient, config: "ChapAlertsListConfig | ChapAlertsReviewedConfig"
+    client: BoundedClient, config: "ChapAlertsListConfig | ChapAlertsReviewedConfig"
 ) -> ChapAlertsOutput:
     """Read the alerts a step looks at, and split them by their gate state."""
     params: dict[str, int] = {}

@@ -7,6 +7,7 @@ import httpx2
 from pydantic import JsonValue
 
 from dirigent_contrib.chap.messages import ANSWERED, NOT_JSON
+from dirigent_contrib.limits import BoundedClient
 from dirigent_plugin import BlockFailure, ErrorClass
 
 #: How much of a refusal's body is quoted back, so a page of HTML does not become the message.
@@ -48,7 +49,7 @@ def refuse(response: httpx2.Response, where: str) -> BlockFailure:
     )
 
 
-async def call(client: httpx2.AsyncClient, method: str, path: str, **kwargs: Any) -> httpx2.Response:
+async def call(client: BoundedClient, method: str, path: str, **kwargs: Any) -> httpx2.Response:
     """Make one call, and raise the classified refusal when Chap answers with an error.
 
     A transport failure is left to propagate: the plugin contract classifies it as transient.
@@ -68,7 +69,7 @@ def json_of(response: httpx2.Response, where: str) -> JsonValue:
     return parsed
 
 
-async def call_json(client: httpx2.AsyncClient, method: str, path: str, **kwargs: Any) -> JsonValue:
+async def call_json(client: BoundedClient, method: str, path: str, **kwargs: Any) -> JsonValue:
     """Make one call and read its answer as JSON."""
     response = await call(client, method, path, **kwargs)
     return json_of(response, f"{method} {path}")

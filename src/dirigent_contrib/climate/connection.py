@@ -7,14 +7,17 @@ from typing import ClassVar, Final, cast
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from dirigent_common import BlockModel, Duration, HealthReport
+from dirigent_common import BlockModel, Duration, HealthReport, Size
 from dirigent_contrib.climate.messages import (
     BAD_HEADER,
     CONNECTION_READ_ONLY,
     CONNECTION_UNHEALTHY,
     CONNECTION_UNREACHABLE,
+    PAST_DEADLINE,
+    RESPONSE_TOO_LARGE,
 )
 from dirigent_contrib.climate.web import remote_words
+from dirigent_contrib.limits import BoundedClient, Limits
 from dirigent_plugin import ConnectionKind, ConnectionRef, StepContext
 
 HEALTH_PATH: Final = "/health"
@@ -49,7 +52,14 @@ class ClimateConnectionConfig(BlockModel):
     """Whether certificates are verified; turning this off is a per-connection decision."""
 
     timeout: Duration = Field(default=timedelta(seconds=30), gt=timedelta(0))
-    """The timeout applied to every request through this connection, unless a block says otherwise."""
+    """The timeout applied to each read of every request through this connection, unless a block says otherwise."""
+
+    request_deadline: Duration = Field(default=timedelta(minutes=10), gt=timedelta(0))
+    """The longest one request through this connection may take, start to last byte, unless a block says otherwise."""
+
+    max_response: Size = Field(default=64 * 1024 * 1024, ge=1)
+    """The most one response through this connection may decode to, unless a block says otherwise; a larger one is
+    refused."""
 
     @field_validator("headers")
     @classmethod
@@ -81,11 +91,25 @@ def build_client(
     )
 
 
-def client_for(ctx: StepContext, ref: ConnectionRef) -> httpx2.AsyncClient:
+def bounded(client: httpx2.AsyncClient, config: ClimateConnectionConfig) -> BoundedClient:
+    """Hold a client to the connection's limits."""
+    return BoundedClient(
+        client,
+        Limits(
+            max_response=config.max_response,
+            request_deadline=config.request_deadline.total_seconds(),
+            too_large=RESPONSE_TOO_LARGE,
+            past_deadline=PAST_DEADLINE,
+        ),
+    )
+
+
+def client_for(ctx: StepContext, ref: ConnectionRef) -> BoundedClient:
     """The client one block call uses: the one the engine builds for the connection, with its headers on."""
+    config = ctx.connection(ref, ClimateConnectionConfig)
     client = ctx.http(ref)
-    client.headers.update(ctx.connection(ref, ClimateConnectionConfig).headers)
-    return client
+    client.headers.update(config.headers)
+    return bounded(client, config)
 
 
 #: A sun half behind a cloud, on the 24-unit grid.
@@ -115,13 +139,14 @@ class ClimateConnectionKind(ConnectionKind):
         A read-only instance is healthy, and the report says that it refuses every write.
         """
         try:
-            async with build_client(settings_of(config), self._transport) as client:
-                health = await client.get(HEALTH_PATH)
+            settings = settings_of(config)
+            async with bounded(build_client(settings, self._transport), settings) as client:
+                health = await client.request("GET", HEALTH_PATH)
                 if health.is_error:
                     detail = f"GET {HEALTH_PATH} answered {health.status_code}: {remote_words(health)}"
                     return HealthReport(healthy=False, detail=CONNECTION_UNREACHABLE.render(detail=detail))
                 status = str(_object(health).get("status") or "")
-                info = await client.get(INFO_PATH)
+                info = await client.request("GET", INFO_PATH)
                 about = _object(info) if not info.is_error else {}
         except Exception as error:  # noqa: BLE001 - a health check reports its verdict, it never raises
             detail = str(error) or type(error).__name__

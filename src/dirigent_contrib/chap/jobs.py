@@ -15,6 +15,7 @@ from dirigent_common import BlockModel
 from dirigent_contrib.chap.connection import client_for
 from dirigent_contrib.chap.messages import JOB_FAILED, JOB_NOT_SUBMITTED, JOB_RUNNING, JOB_UNKNOWN, JOB_UNSETTLED
 from dirigent_contrib.chap.web import call_json, json_of, mapping, refuse
+from dirigent_contrib.limits import BoundedClient
 from dirigent_contrib.paths import is_plain_id, segment
 from dirigent_plugin import (
     BlockFailure,
@@ -45,10 +46,10 @@ def job_path(job_id: str, tail: str = "") -> str:
     return f"/v1/jobs/{segment(job_id)}{tail}"
 
 
-async def read_job(client: httpx2.AsyncClient, job_id: str) -> dict[str, JsonValue] | None:
+async def read_job(client: BoundedClient, job_id: str) -> dict[str, JsonValue] | None:
     """Read a job's description, or None when Chap does not know it."""
     path = job_path(job_id)
-    response = await client.get(path)
+    response = await client.request("GET", path)
     if response.status_code == 404:
         return None
     if response.is_error:
@@ -56,11 +57,11 @@ async def read_job(client: httpx2.AsyncClient, job_id: str) -> dict[str, JsonVal
     return mapping(json_of(response, f"GET {path}"))
 
 
-async def log_tail(client: httpx2.AsyncClient, job_id: str) -> str:
-    """The end of a job's captured log, or nothing when Chap has none to give."""
+async def log_tail(client: BoundedClient, job_id: str) -> str:
+    """The end of a job's captured log, or nothing when Chap has none to give within the connection's limits."""
     try:
-        response = await client.get(job_path(job_id, "/logs"))
-    except httpx2.TransportError:
+        response = await client.request("GET", job_path(job_id, "/logs"))
+    except (httpx2.TransportError, BlockFailure):
         return ""
     if response.is_error:
         return ""
@@ -72,7 +73,7 @@ async def log_tail(client: httpx2.AsyncClient, job_id: str) -> str:
     return text[-LOG_TAIL:]
 
 
-async def observe(client: httpx2.AsyncClient, job_id: str, ctx: StepContext) -> ProbeResult:
+async def observe(client: BoundedClient, job_id: str, ctx: StepContext) -> ProbeResult:
     """Map a job's status onto a probe result, writing the log of a failed job into the run.
 
     ``PENDING`` and ``STARTED`` are running, and so is any status Chap adds later: only the
@@ -93,7 +94,7 @@ async def observe(client: httpx2.AsyncClient, job_id: str, ctx: StepContext) -> 
     return ProbeResult(status=ProbeStatus.RUNNING, message=JOB_RUNNING.render(job=job_id, status=status or "unknown"))
 
 
-async def result_of(client: httpx2.AsyncClient, job_id: str, helper: str) -> JsonValue:
+async def result_of(client: BoundedClient, job_id: str, helper: str) -> JsonValue:
     """Ask a result helper for a job's result, once the job's own status says it succeeded."""
     job = await read_job(client, job_id)
     status = str(job.get("status") or "") if job is not None else "unknown"
@@ -102,10 +103,10 @@ async def result_of(client: httpx2.AsyncClient, job_id: str, helper: str) -> Jso
     return await call_json(client, "GET", job_path(job_id, f"/{helper}"))
 
 
-async def cancel_job(client: httpx2.AsyncClient, job_id: str) -> bool:
+async def cancel_job(client: BoundedClient, job_id: str) -> bool:
     """Revoke a job; False when Chap would not, because it had finished or was never known."""
-    response = await client.post(job_path(job_id, "/cancel"))
-    return not response.is_error
+    async with client.stream("POST", job_path(job_id, "/cancel")) as response:
+        return not response.is_error
 
 
 class ChapJobConfig(BlockModel):
@@ -141,9 +142,7 @@ class ChapJobOperator[ConfigT: ChapJobConfig, OutputT: BaseModel](Operator[Confi
             return await cancel_job(client, handle.ref)
 
 
-async def submit(
-    client: httpx2.AsyncClient, path: str, body: dict[str, JsonValue], **kwargs: Any
-) -> dict[str, JsonValue]:
+async def submit(client: BoundedClient, path: str, body: dict[str, JsonValue], **kwargs: Any) -> dict[str, JsonValue]:
     """Post a job's request and read the answer as an object."""
     return mapping(await call_json(client, "POST", path, json=body, **kwargs))
 

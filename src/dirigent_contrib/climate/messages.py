@@ -14,6 +14,14 @@ BAD_HEADER = CLIMATE.define(
     "or it cannot be sent",
 )
 
+RESPONSE_TOO_LARGE = CLIMATE.define(
+    "response_too_large",
+    "{where} answered with more than max_response ({limit} bytes) and the rest was not read; "
+    "raise max_response if the answer is expected",
+)
+
+PAST_DEADLINE = CLIMATE.define("past_deadline", "{where} took longer than the {seconds} seconds it is allowed")
+
 CONNECTION_UNREACHABLE = CLIMATE.define("connection.unreachable", "the open climate service did not answer: {detail}")
 
 CONNECTION_UNHEALTHY = CLIMATE.define("connection.unhealthy", "the open climate service reports itself {status}")

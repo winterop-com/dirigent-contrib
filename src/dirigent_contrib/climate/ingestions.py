@@ -104,7 +104,7 @@ class ClimateIngestionOperator[ConfigT: ClimateIngestionConfig](Operator[ConfigT
         """Read the job's record, or None when the service no longer knows it."""
         path = ingestion_job_path(handle.ref)
         async with client_for(ctx, config.connection) as client:
-            response = await client.get(path)
+            response = await client.request("GET", path)
         if response.status_code == 404:
             return None
         if response.is_error:
@@ -147,9 +147,11 @@ class ClimateIngestionOperator[ConfigT: ClimateIngestionConfig](Operator[ConfigT
 
     async def cancel(self, handle: RemoteHandle, config: ConfigT, ctx: StepContext) -> bool:
         """Ask the service to stop the job; it stops at its next checkpoint."""
-        async with client_for(ctx, config.connection) as client:
-            response = await client.delete(ingestion_job_path(handle.ref))
-        return not response.is_error
+        async with (
+            client_for(ctx, config.connection) as client,
+            client.stream("DELETE", ingestion_job_path(handle.ref)) as response,
+        ):
+            return not response.is_error
 
 
 class ClimateIngestConfig(ClimateIngestionConfig):

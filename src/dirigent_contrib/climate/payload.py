@@ -5,6 +5,7 @@ whatever its size. One no larger than the instance lets a block inline is also h
 decoded, in the two fields ``storage.read`` decodes into: ``value`` for JSON, ``text`` for text.
 """
 
+import contextlib
 import json
 from typing import Final
 
@@ -12,8 +13,9 @@ import httpx2
 from pydantic import JsonValue
 
 from dirigent_common import BlockModel
-from dirigent_contrib.climate.messages import NOT_JSON
+from dirigent_contrib.climate.messages import NOT_JSON, RESPONSE_TOO_LARGE
 from dirigent_contrib.climate.web import refuse
+from dirigent_contrib.limits import pieces, read_error
 from dirigent_plugin import BlockFailure, ErrorClass, StepContext
 
 #: The extension a captured payload is named with, by the media type it arrived as.
@@ -61,21 +63,28 @@ def _jsonish(kind: str) -> bool:
     return kind == "application/json" or kind.endswith("+json")
 
 
-async def capture(ctx: StepContext, response: httpx2.Response, name: str, where: str) -> Payload:
-    """Stream a response into the run's storage, keeping it in memory only while it is small enough to inline."""
+async def capture(ctx: StepContext, response: httpx2.Response, name: str, where: str, max_response: int) -> Payload:
+    """Stream a response into the run's storage, keeping it in memory only while it is small enough to inline.
+
+    An answer past ``max_response`` is refused with no more than that much of it written.
+    """
     if response.is_error:
-        await response.aread()
-        raise refuse(response, where)
+        raise refuse(await read_error(response), where)
     kind = media_type(response)
     held = bytearray()
     size = 0
     limit = ctx.inline_capture
     async with ctx.capture(f"{name}{EXTENSIONS.get(kind, '.bin')}", content_type=kind) as sink:
-        async for chunk in response.aiter_bytes():
-            await sink.write(chunk)
-            size += len(chunk)
-            if size <= limit:
-                held.extend(chunk)
+        async with contextlib.aclosing(pieces(response)) as decoded:
+            async for chunk in decoded:
+                if size + len(chunk) > max_response:
+                    raise BlockFailure(
+                        RESPONSE_TOO_LARGE, error_class=ErrorClass.REJECTED, where=where, limit=max_response
+                    )
+                await sink.write(chunk)
+                size += len(chunk)
+                if size <= limit:
+                    held.extend(chunk)
         uri = sink.uri
     payload = Payload(uri=uri, content_type=kind, size_bytes=size)
     if size > limit:

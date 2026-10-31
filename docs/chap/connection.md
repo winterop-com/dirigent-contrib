@@ -12,7 +12,9 @@ never from a step.
 | `base_url` | `string` | yes |  | The server root every request path is resolved against, such as `http://localhost:8000`. |
 | `api_token` | `string (password) or null` |  | `null` | The server's API token, sent as `Authorization: Bearer`: visible ASCII with no whitespace. Leave it unset for a server without auth. |
 | `verify_tls` | `boolean` |  | `true` | Whether certificates are verified; turning this off is a per-connection decision. |
-| `timeout` | `string (humane-duration)` |  | `"30s"` | The timeout applied to every request through this connection. |
+| `timeout` | `string (humane-duration)` |  | `"30s"` | The timeout applied to each read of every request through this connection. |
+| `request_deadline` | `string (humane-duration)` |  | `"10m"` | The longest one request through this connection may take, start to last byte. |
+| `max_response` | `string (size) or integer` |  | `"64MB"` | The most one response through this connection may decode to; a larger one is refused. |
 
 `api_token` is the secret field: it is encrypted at rest with the instance key and redacted in
 every read.
@@ -23,6 +25,21 @@ cannot be sent as a header value. The refusal does not repeat the value. An empt
 unset. A row stored before this rule fails when it is next read, so its check is unhealthy and its
 steps fail until the token is set again. A token that was already written into a check's detail or a
 step's error should be rotated.
+
+## What one answer may cost
+
+The connection holds Chap to two limits, on every request a block makes and on the health check.
+
+- `max_response` is counted as a body decodes, so a small compressed answer stops at the limit rather
+  than expanding in the worker's memory. Past it the check is unhealthy and the step fails as
+  `chap.response_too_large`, class `rejected`. Raise it if a real read needs more. An error answer past
+  it does not fail this way: only its opening is read, and its status still classifies it.
+- `request_deadline` covers one request start to last byte. `timeout` limits each read instead, so a
+  server sending a byte at a time never reaches it. Past the deadline the check is unhealthy and the
+  step fails as `chap.past_deadline`, class `transient`, so a retry follows the step's own policy.
+
+A failed job whose log cannot be read within these limits still fails with its own error, and a cancel
+reads only the status of its answer.
 
 ## Two auth modes
 
