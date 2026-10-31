@@ -9,8 +9,9 @@ from dirigent_common import BlockModel
 from dirigent_contrib.chap.bodies import ObservationsConfig, body_of
 from dirigent_contrib.chap.connection import client_for
 from dirigent_contrib.chap.jobs import JOB_POLL, ChapJobOperator, job_id_of, submit
+from dirigent_contrib.chap.messages import PREDICTION_NOT_STORED
 from dirigent_contrib.chap.web import call_json, mapping
-from dirigent_plugin import ConnectionRef, Operator, OperatorSpec, RemoteHandle, StepContext
+from dirigent_plugin import BlockFailure, ConnectionRef, ErrorClass, Operator, OperatorSpec, RemoteHandle, StepContext
 
 
 def run_path(prediction_setup_id: int) -> str:
@@ -49,7 +50,7 @@ class ChapPredictionRunConfig(ObservationsConfig):
 class ChapPredictionRunOutput(BlockModel):
     """The prediction the finished job stored, as Chap describes it."""
 
-    prediction_id: int | None = None
+    prediction_id: int
     """The stored prediction's id, which `chap.prediction.read` names."""
 
     job_id: str
@@ -85,11 +86,13 @@ class ChapPredictionRunOperator(ChapJobOperator[ChapPredictionRunConfig, ChapPre
     async def fetch(
         self, handle: RemoteHandle, config: ChapPredictionRunConfig, ctx: StepContext
     ) -> ChapPredictionRunOutput:
-        """Read the stored prediction off the finished job."""
+        """Read the stored prediction off the finished job, refusing a result with no integer id."""
         prediction = await self.result(handle, config, ctx)
         prediction_id = mapping(prediction).get("id")
+        if not isinstance(prediction_id, int) or isinstance(prediction_id, bool):
+            raise BlockFailure(PREDICTION_NOT_STORED, error_class=ErrorClass.UNKNOWN, job=handle.ref)
         return ChapPredictionRunOutput(
-            prediction_id=prediction_id if isinstance(prediction_id, int) else None,
+            prediction_id=prediction_id,
             job_id=handle.ref,
             prediction=prediction,
         )

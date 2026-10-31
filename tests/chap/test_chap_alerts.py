@@ -185,3 +185,39 @@ async def test_record_refused_by_chap_is_never_retried(ctx: FakeContext, chap: C
 def test_record_needs_an_alert() -> None:
     with pytest.raises(ValidationError):
         ChapAlertsRecordOperator.config_model.model_validate({"connection": CONNECTION, "alerts": []})
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        pytest.param(alert(1, "approved", predictionId=999), id="another-prediction"),
+        pytest.param(alert(1, "pending", predictionId=999), id="another-prediction-pending"),
+        pytest.param(alert(1, "declined", org_unit="OU9", predictionId=999), id="another-org-unit-too"),
+        pytest.param({"id": 1, "approved": "approved"}, id="no-prediction"),
+        pytest.param(alert(1, "approved", predictionId="7"), id="prediction-as-text"),
+        pytest.param("not an object", id="not-an-object"),
+    ],
+)
+async def test_the_sensor_refuses_a_row_of_another_prediction(row: Any, ctx: FakeContext, chap: ChapServer) -> None:
+    chap.on("GET", ALERTS, body=[alert(2, "approved"), row])
+    with pytest.raises(BlockFailure) as refused:
+        await call_block(ChapAlertsReviewedSensor(), reviewed(org_units=["OU1"]), ctx)
+    assert refused.value.code == "chap.alerts.outside"
+    assert refused.value.error_class is ErrorClass.UNKNOWN
+    assert "predictionId" in str(refused.value)
+
+
+async def test_a_listing_refuses_a_row_of_another_policy(ctx: FakeContext, chap: ChapServer) -> None:
+    chap.on("GET", ALERTS, body=[alert(1, "approved", alertPolicyId=4)])
+    config = {"connection": CONNECTION, "alert_policy_id": 3}
+    with pytest.raises(BlockFailure) as refused:
+        await call_block(ChapAlertsListOperator(), config, ctx)
+    assert refused.value.code == "chap.alerts.outside"
+    assert "alertPolicyId" in str(refused.value)
+
+
+async def test_a_listing_naming_nothing_takes_every_row(ctx: FakeContext, chap: ChapServer) -> None:
+    chap.on("GET", ALERTS, body=[alert(1, "approved", predictionId=40), alert(2, "approved", predictionId=41)])
+    output = await call_block(ChapAlertsListOperator(), {"connection": CONNECTION}, ctx)
+    assert isinstance(output, ChapAlertsOutput)
+    assert output.counts.approved == 2
