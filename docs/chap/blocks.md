@@ -122,7 +122,8 @@ Submits `POST /v1/crud/prediction-setups/{predictionSetupId}/run` with the obser
 follows the forecast job; the output is the prediction as `/v1/jobs/{id}/prediction_result`
 answers with it. An unknown setup (404), an archived model (409) and observations Chap cannot
 use (422) are refusals and are never retried. The setup fixes the model, the target and the
-future-weather provider.
+future-weather provider. A finished job whose result has no integer `id` fails the step with
+`chap.prediction.not_stored`, so a later step never reads every prediction's alerts for want of one.
 
 **Config**
 
@@ -141,7 +142,7 @@ future-weather provider.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `prediction_id` | `integer or null` |  | `null` | The stored prediction's id, which `chap.prediction.read` names. |
+| `prediction_id` | `integer` | yes |  | The stored prediction's id, which `chap.prediction.read` names. |
 | `job_id` | `string` | yes |  | The forecast job Chap ran. |
 | `prediction` | `any` |  | `null` | The prediction exactly as Chap's prediction result answers with it. |
 
@@ -266,6 +267,11 @@ The sensor never decides on an alert, and it is not a source: it waits inside th
 forecast the prediction it names. `poll`, `deadline` and `on_timeout` are the step's own, as
 for every sensor. See [Alert verification](index.md#alert-verification).
 
+The rows Chap answers with are held to what the step named: a row whose `predictionId` or, when a
+policy is named, `alertPolicyId` differs fails the poke with `chap.alerts.outside`, here and in
+`chap.alerts.list`. Rows are refused rather than skipped, since skipping them could release the gate
+on an empty list. An org unit is filtered on the worker, and Chap's word for a row's org unit is taken.
+
 **Config**
 
 | Field | Type | Required | Default | Description |
@@ -354,6 +360,8 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 | `chap.csv.too_large` | `the csv unfolds to {count} observations, more than max_observations allows ({limit})` |
 | `chap.dataset.rejected` | `Chap rejected {count} of the observations and on_rejected is fail, so nothing was imported: {detail}` |
 | `chap.job.not_submitted` | `{where} answered without a job id to follow` |
+| `chap.prediction.not_stored` | `job {job} finished without an integer prediction id` |
 | `chap.alerts.reviewing` | `{reviewed} of {total} reviewed` |
 | `chap.alerts.not_a_list` | `{where} answered with something other than a list of alerts` |
+| `chap.alerts.outside` | `{where} answered with an alert whose {field} is not the {asked} asked for` |
 | `chap.alerts.not_recorded` | `{where} answered without the ids of the alerts it recorded` |

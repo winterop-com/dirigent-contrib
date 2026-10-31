@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, JsonValue
 from dirigent_common import BlockModel
 from dirigent_contrib.chap.bodies import PassThroughConfig, body_of
 from dirigent_contrib.chap.connection import client_for
-from dirigent_contrib.chap.messages import ALERTS_NOT_A_LIST, ALERTS_NOT_RECORDED, ALERTS_REVIEWING
+from dirigent_contrib.chap.messages import ALERTS_NOT_A_LIST, ALERTS_NOT_RECORDED, ALERTS_OUTSIDE, ALERTS_REVIEWING
 from dirigent_contrib.chap.web import call_json, mapping
 from dirigent_contrib.limits import BoundedClient
 from dirigent_plugin import (
@@ -96,7 +96,10 @@ class ChapAlertsOutput(BlockModel):
 async def list_alerts(
     client: BoundedClient, config: "ChapAlertsListConfig | ChapAlertsReviewedConfig"
 ) -> ChapAlertsOutput:
-    """Read the alerts a step looks at, and split them by their gate state."""
+    """Read the alerts a step looks at, and split them by their gate state.
+
+    A row outside the prediction or policy the step named is refused, not skipped.
+    """
     params: dict[str, int] = {}
     if config.prediction_id is not None:
         params["predictionId"] = config.prediction_id
@@ -108,6 +111,11 @@ async def list_alerts(
     wanted = set(config.org_units) if config.org_units is not None else None
     output = ChapAlertsOutput()
     for alert in answer:
+        for field, asked in params.items():
+            if mapping(alert).get(field) != asked:
+                raise BlockFailure(
+                    ALERTS_OUTSIDE, error_class=ErrorClass.UNKNOWN, where=f"GET {ALERTS_PATH}", field=field, asked=asked
+                )
         if wanted is not None and mapping(alert).get("orgUnit") not in wanted:
             continue
         state = mapping(alert).get("approved")

@@ -61,8 +61,14 @@ DATASET_REJECTED = CHAP.define(
 
 JOB_NOT_SUBMITTED = CHAP.define("job.not_submitted", "{where} answered without a job id to follow")
 
+PREDICTION_NOT_STORED = CHAP.define("prediction.not_stored", "job {job} finished without an integer prediction id")
+
 ALERTS_REVIEWING = CHAP.define("alerts.reviewing", "{reviewed} of {total} reviewed")
 
 ALERTS_NOT_A_LIST = CHAP.define("alerts.not_a_list", "{where} answered with something other than a list of alerts")
+
+ALERTS_OUTSIDE = CHAP.define(
+    "alerts.outside", "{where} answered with an alert whose {field} is not the {asked} asked for"
+)
 
 ALERTS_NOT_RECORDED = CHAP.define("alerts.not_recorded", "{where} answered without the ids of the alerts it recorded")

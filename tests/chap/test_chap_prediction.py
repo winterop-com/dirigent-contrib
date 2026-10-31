@@ -77,3 +77,27 @@ async def test_the_default_quantiles_are_the_median_and_its_band(ctx: FakeContex
     await call_block(ChapPredictionReadOperator(), {"connection": CONNECTION, "prediction_id": 11}, ctx)
     sent = chap.sent("GET", "/v1/analytics/prediction-entry/11")[0]
     assert sent.url.params.get_list("quantiles") == ["0.1", "0.5", "0.9"]
+
+
+@pytest.mark.parametrize(
+    "prediction",
+    [
+        pytest.param({}, id="empty"),
+        pytest.param({"id": None}, id="null"),
+        pytest.param({"id": "42"}, id="text"),
+        pytest.param({"id": True}, id="boolean"),
+        pytest.param({"id": 4.5}, id="float"),
+        pytest.param([{"id": 42}], id="not-an-object"),
+    ],
+)
+async def test_a_finished_job_without_an_integer_id_fails_the_fetch(
+    prediction: Any, ctx: FakeContext, chap: ChapServer
+) -> None:
+    chap.on("GET", "/v1/jobs/job-p", body=job("job-p", "SUCCESS"))
+    chap.on("GET", "/v1/jobs/job-p/prediction_result", body=prediction)
+    block = ChapPredictionRunOperator()
+    config = ChapPredictionRunConfig.model_validate(_config())
+    with pytest.raises(BlockFailure) as refused:
+        await settle(block, block.handle("job-p"), config, ctx)
+    assert refused.value.code == "chap.prediction.not_stored"
+    assert refused.value.error_class is ErrorClass.UNKNOWN
