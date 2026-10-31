@@ -8,7 +8,15 @@ from pydantic import BaseModel, Field, JsonValue
 
 from dirigent_common import BlockModel
 from dirigent_contrib.climate.connection import client_for
-from dirigent_contrib.climate.messages import EXPORT_REJECTED, JOB_FAILED, JOB_NOT_SUBMITTED, JOB_RUNNING, JOB_UNKNOWN
+from dirigent_contrib.climate.messages import (
+    EXPORT_DRY_RUN_DIFFERS,
+    EXPORT_NO_OUTCOME,
+    EXPORT_REJECTED,
+    JOB_FAILED,
+    JOB_NOT_SUBMITTED,
+    JOB_RUNNING,
+    JOB_UNKNOWN,
+)
 from dirigent_contrib.climate.web import call_json, json_of, mapping, refuse
 from dirigent_contrib.paths import PLAIN_ID_PATTERN, is_plain_id, segment
 from dirigent_plugin import (
@@ -31,6 +39,10 @@ SUCCESSFUL: Final = "successful"
 
 #: The outcome of a delivery the target refused.
 REJECTED_OUTCOME: Final = "rejected"
+
+#: The outcome of a delivery that wrote, and of one that only validated.
+WROTE_OUTCOME: Final = "success"
+DRY_RUN_OUTCOME: Final = "dry_run"
 
 #: How often a delivery is probed when the step does not say.
 DELIVERY_POLL: Final = timedelta(seconds=15)
@@ -91,7 +103,7 @@ class ClimateExportOutput(BlockModel):
     status: str
     """The delivery job's final status."""
 
-    outcome: str | None = None
+    outcome: str
     """The report's outcome: success, partial, dry_run, cancelled or unknown."""
 
     reused: bool = False
@@ -129,6 +141,15 @@ class ClimateExportOperator(Operator[ClimateExportConfig, ClimateExportOutput]):
         delivery = accepted.get("delivery_job_id")
         if not isinstance(delivery, str) or not is_plain_id(delivery):
             raise BlockFailure(JOB_NOT_SUBMITTED, error_class=ErrorClass.UNKNOWN, where=f"POST {path}")
+        answered = accepted.get("dry_run")
+        if isinstance(answered, bool) and answered is not config.dry_run:
+            raise BlockFailure(
+                EXPORT_DRY_RUN_DIFFERS,
+                error_class=ErrorClass.UNKNOWN,
+                export=config.export_id,
+                asked=config.dry_run,
+                answered=answered,
+            )
         reused = accepted.get("reused") is True
         ctx.log.info("delivery queued", delivery=delivery, reused=reused)
         return RemoteHandle(
@@ -154,26 +175,40 @@ class ClimateExportOperator(Operator[ClimateExportConfig, ClimateExportOutput]):
         )
 
     async def fetch(self, handle: RemoteHandle, config: ClimateExportConfig, ctx: StepContext) -> ClimateExportOutput:
-        """Read the delivery's report; a report the target rejected fails the step as a refusal."""
+        """Read the delivery's report.
+
+        A report the target rejected fails the step as a refusal. One with no outcome, or whose
+        outcome says the delivery did what the step did not ask, fails it too; ``partial``,
+        ``cancelled`` and ``unknown`` end the step for what follows to read.
+        """
         delivery = await self._read(handle, config, ctx)
         if delivery is None:
             raise BlockFailure(JOB_UNKNOWN, error_class=ErrorClass.TRANSIENT, job=handle.ref)
         report = mapping(delivery.get("report"))
         outcome = report.get("outcome")
-        if outcome == REJECTED_OUTCOME:
+        export = handle.meta.get(EXPORT_ID, config.export_id)
+        if not isinstance(outcome, str) or not outcome:
+            raise BlockFailure(EXPORT_NO_OUTCOME, error_class=ErrorClass.UNKNOWN, job=handle.ref, export=export)
+        said = outcome.casefold()
+        if said == REJECTED_OUTCOME:
             raise BlockFailure(
                 EXPORT_REJECTED,
                 error_class=ErrorClass.REJECTED,
-                export=handle.meta.get(EXPORT_ID, config.export_id),
+                export=export,
                 detail=str(report.get("message") or f"{len(_conflicts(report))} conflicts"),
+            )
+        asked_dry = handle.meta.get(DRY_RUN) == "true"
+        if said == (WROTE_OUTCOME if asked_dry else DRY_RUN_OUTCOME):
+            raise BlockFailure(
+                EXPORT_DRY_RUN_DIFFERS, error_class=ErrorClass.UNKNOWN, export=export, asked=asked_dry, answered=outcome
             )
         return ClimateExportOutput(
             delivery_job_id=handle.ref,
-            export_id=handle.meta.get(EXPORT_ID, config.export_id),
+            export_id=export,
             status=str(delivery.get("status") or ""),
-            outcome=str(outcome) if outcome is not None else None,
+            outcome=outcome,
             reused=handle.meta.get(REUSED) == "true",
-            dry_run=handle.meta.get(DRY_RUN) == "true",
+            dry_run=asked_dry,
             report=delivery.get("report"),
         )
 
