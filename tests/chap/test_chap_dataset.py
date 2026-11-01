@@ -1,6 +1,7 @@
 """``chap.dataset.import``: validation, the import job it follows, and the dataset id it ends with."""
 
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -144,15 +145,63 @@ async def test_a_released_chaps_bare_status_settles_the_step(ctx: FakeContext) -
 
 
 @pytest.mark.parametrize("chap", RELEASES, indirect=True)
-async def test_a_status_no_chap_reports_fails_the_step(ctx: FakeContext, chap: ChapServer) -> None:
+async def test_a_status_no_chap_reports_keeps_the_step_waiting_and_is_logged_once(
+    ctx: FakeContext, chap: ChapServer
+) -> None:
     chap.job("job-1", "PROGRESSING")
     block = ChapDatasetImportOperator()
     config = ChapDatasetImportConfig.model_validate(_config())
+    handle = block.handle("job-1")
+    first = await block.probe(handle, config, ctx.as_context())
+    assert first.status is ProbeStatus.RUNNING
+    assert first.message == "job job-1 is PROGRESSING"
+    assert first.meta is not None
+    second = await block.probe(handle.model_copy(update={"meta": first.meta}), config, ctx.as_context())
+    assert second.status is ProbeStatus.RUNNING
+    logged = [entry for entry in ctx.log.entries if "unknown status" in entry[1]]
+    assert len(logged) == 1
+    assert logged[0][2] == {"job": "job-1", "status": "PROGRESSING"}
+
+
+@pytest.mark.parametrize("chap", RELEASES, indirect=True)
+@pytest.mark.parametrize("status", ["STARTED", "PROGRESSING"])
+async def test_a_job_unsettled_past_follow_for_fails_the_step(status: str, ctx: FakeContext, chap: ChapServer) -> None:
+    chap.job("job-1", status)
+    block = ChapDatasetImportOperator()
+    config = ChapDatasetImportConfig.model_validate(_config(follow_for="1h"))
+    submitted = (datetime.now(UTC) - timedelta(hours=1, seconds=1)).isoformat()
+    handle = block.handle("job-1", submitted_at=submitted)
     with pytest.raises(BlockFailure) as refused:
-        await block.probe(block.handle("job-1"), config, ctx.as_context())
-    assert refused.value.code == "chap.job.unrecognised"
-    assert refused.value.error_class is ErrorClass.REJECTED
-    assert "PROGRESSING" in str(refused.value)
+        await block.probe(handle, config, ctx.as_context())
+    assert refused.value.code == "chap.job.not_settled"
+    assert refused.value.error_class is ErrorClass.TRANSIENT
+    assert "job-1" in str(refused.value) and status in str(refused.value)
+
+
+async def test_a_job_that_settles_past_follow_for_still_settles(ctx: FakeContext, chap: ChapServer) -> None:
+    chap.job("job-1", "SUCCESS")
+    block = ChapDatasetImportOperator()
+    config = ChapDatasetImportConfig.model_validate(_config(follow_for="1h"))
+    handle = block.handle("job-1", submitted_at=(datetime.now(UTC) - timedelta(hours=2)).isoformat())
+    probe = await block.probe(handle, config, ctx.as_context())
+    assert probe.status is ProbeStatus.SUCCEEDED
+
+
+async def test_a_job_is_followed_for_six_hours_unless_the_step_says(ctx: FakeContext, chap: ChapServer) -> None:
+    chap.job("job-1", "STARTED")
+    block = ChapDatasetImportOperator()
+    config = ChapDatasetImportConfig.model_validate(_config())
+    assert config.follow_for == timedelta(hours=6)
+    handle = block.handle("job-1", submitted_at=(datetime.now(UTC) - timedelta(hours=5)).isoformat())
+    assert (await block.probe(handle, config, ctx.as_context())).status is ProbeStatus.RUNNING
+
+
+async def test_follow_for_is_not_sent_to_chap(ctx: FakeContext, chap: ChapServer) -> None:
+    chap.on("POST", MAKE, body={"id": "job-1", "importedCount": 1, "rejected": []})
+    handle = await call_block(ChapDatasetImportOperator(), _config(follow_for="2h"), ctx)
+    assert isinstance(handle, RemoteHandle) and "submitted_at" in handle.meta
+    body = chap.body("POST", MAKE)
+    assert "follow_for" not in body and "followFor" not in body
 
 
 @pytest.mark.parametrize(

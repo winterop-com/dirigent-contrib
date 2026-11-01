@@ -10,21 +10,21 @@ failure's reason under ``error``. Both are read.
 """
 
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Final
 
 import httpx2
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel, Field, JsonValue
 
-from dirigent_common import BlockModel
+from dirigent_common import BlockModel, Duration, format_duration
 from dirigent_contrib.chap.connection import client_for
 from dirigent_contrib.chap.messages import (
     JOB_FAILED,
+    JOB_NOT_SETTLED,
     JOB_NOT_SUBMITTED,
     JOB_RUNNING,
     JOB_UNKNOWN,
     JOB_UNREADABLE,
-    JOB_UNRECOGNISED,
     JOB_UNSETTLED,
 )
 from dirigent_contrib.chap.web import QUOTED, call_json, json_of, mapping, refuse
@@ -52,6 +52,15 @@ RUNNING: Final = frozenset({"PENDING", "RECEIVED", "STARTED", "RETRY"})
 
 #: How often a Chap job is probed when the step does not say.
 JOB_POLL: Final = timedelta(seconds=30)
+
+#: How long a job is followed when the step does not say.
+FOLLOW_FOR: Final = timedelta(hours=6)
+
+#: The handle's metadata key holding when the job was submitted, as an ISO timestamp.
+SUBMITTED_AT: Final = "submitted_at"
+
+#: The handle's metadata key set once an unknown status has been logged for the job.
+UNKNOWN_LOGGED: Final = "unknown_status_logged"
 
 #: How much of a failed job's log is written into the run.
 LOG_TAIL: Final = 4000
@@ -100,18 +109,18 @@ async def log_tail(client: BoundedClient, job_id: str) -> str:
     return text[-LOG_TAIL:]
 
 
-async def observe(client: BoundedClient, job_id: str, ctx: StepContext) -> ProbeResult:
+async def observe(client: BoundedClient, handle: RemoteHandle, follow_for: timedelta, ctx: StepContext) -> ProbeResult:
     """Map a job's status onto a probe result, writing the log of a failed job into the run.
 
-    A status that is neither running nor final is refused, so a step never waits on a word it
-    cannot read.
+    A status that is neither running nor final keeps the step waiting, and is logged once per
+    job. A job still unsettled once ``follow_for`` has passed since it was submitted fails the
+    step.
     """
+    job_id = handle.ref
     job = await read_job(client, job_id)
     if job is None:
         return ProbeResult(status=ProbeStatus.GONE, message=JOB_UNKNOWN.render(job=job_id))
     status = str(job["status"])
-    if status in RUNNING:
-        return ProbeResult(status=ProbeStatus.RUNNING, message=JOB_RUNNING.render(job=job_id, status=status))
     if status == SUCCESS:
         return ProbeResult(status=ProbeStatus.SUCCEEDED, message=JOB_RUNNING.render(job=job_id, status=status))
     if status in FAILED:
@@ -120,7 +129,34 @@ async def observe(client: BoundedClient, job_id: str, ctx: StepContext) -> Probe
         if tail:
             ctx.log.warning("the Chap job's log ends", job=job_id, log=tail)
         return ProbeResult(status=ProbeStatus.FAILED, message=JOB_FAILED.render(job=job_id, status=status, error=error))
-    raise BlockFailure(JOB_UNRECOGNISED, error_class=ErrorClass.REJECTED, job=job_id, status=status)
+    meta = dict(handle.meta)
+    now = datetime.now(UTC)
+    submitted = _submitted_at(meta) or now
+    meta.setdefault(SUBMITTED_AT, submitted.isoformat())
+    if now - submitted >= follow_for:
+        raise BlockFailure(
+            JOB_NOT_SETTLED,
+            error_class=ErrorClass.TRANSIENT,
+            job=job_id,
+            follow_for=format_duration(follow_for),
+            status=status,
+        )
+    if status not in RUNNING and UNKNOWN_LOGGED not in meta:
+        ctx.log.warning("the Chap job reports an unknown status, so the step keeps waiting", job=job_id, status=status)
+        meta[UNKNOWN_LOGGED] = status
+    return ProbeResult(
+        status=ProbeStatus.RUNNING,
+        message=JOB_RUNNING.render(job=job_id, status=status),
+        meta=meta if meta != handle.meta else None,
+    )
+
+
+def _submitted_at(meta: dict[str, str]) -> datetime | None:
+    """When the job was submitted, as the handle recorded it, or None when it did not."""
+    try:
+        return datetime.fromisoformat(meta[SUBMITTED_AT])
+    except (KeyError, ValueError):
+        return None
 
 
 async def result_of(client: BoundedClient, job_id: str, helper: str) -> JsonValue:
@@ -139,10 +175,13 @@ async def cancel_job(client: BoundedClient, job_id: str) -> bool:
 
 
 class ChapJobConfig(BlockModel):
-    """What every job-backed Chap block's config begins with."""
+    """What every job-backed Chap block's config carries."""
 
     connection: ConnectionRef
     """The code of the chap connection naming the server."""
+
+    follow_for: Duration = Field(default=FOLLOW_FOR, gt=timedelta(0))
+    """How long the step follows the Chap job before failing it; a shorter step `deadline` ends it sooner."""
 
 
 class ChapJobOperator[ConfigT: ChapJobConfig, OutputT: BaseModel](Operator[ConfigT, OutputT]):
@@ -152,13 +191,14 @@ class ChapJobOperator[ConfigT: ChapJobConfig, OutputT: BaseModel](Operator[Confi
     result_helper: ClassVar[str]
 
     def handle(self, job_id: str, **meta: str) -> RemoteHandle:
-        """The handle that follows a submitted job."""
-        return RemoteHandle(block_id=self.spec.id, ref=job_id, meta=meta)
+        """The handle that follows a submitted job, stamped with when it was submitted."""
+        stamped = {SUBMITTED_AT: datetime.now(UTC).isoformat(), **meta}
+        return RemoteHandle(block_id=self.spec.id, ref=job_id, meta=stamped)
 
     async def probe(self, handle: RemoteHandle, config: ConfigT, ctx: StepContext) -> ProbeResult:
         """Read the job's status once."""
         async with client_for(ctx, config.connection) as client:
-            return await observe(client, handle.ref, ctx)
+            return await observe(client, handle, config.follow_for, ctx)
 
     async def result(self, handle: RemoteHandle, config: ConfigT, ctx: StepContext) -> JsonValue:
         """Read the finished job's result from this block's helper."""

@@ -7,14 +7,14 @@ from pydantic import BaseModel, Field, JsonValue
 from dirigent_common import BlockModel
 from dirigent_contrib.chap.bodies import PassThroughConfig, body_of
 from dirigent_contrib.chap.connection import client_for
-from dirigent_contrib.chap.jobs import JOB_POLL, ChapJobOperator, job_id_of, submit
+from dirigent_contrib.chap.jobs import JOB_POLL, ChapJobConfig, ChapJobOperator, job_id_of, submit
 from dirigent_contrib.chap.web import mapping
 from dirigent_plugin import OperatorSpec, RemoteHandle, StepContext
 
 CREATE_BACKTEST_PATH: Final = "/v1/analytics/create-backtest"
 
 
-class ChapBacktestRunConfig(PassThroughConfig):
+class ChapBacktestRunConfig(ChapJobConfig, PassThroughConfig):
     """What one backtest asks of Chap.
 
     A parameter left unset takes the server's saved default, and any undeclared key is sent to

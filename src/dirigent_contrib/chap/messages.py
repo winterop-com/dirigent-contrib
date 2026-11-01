@@ -42,8 +42,8 @@ JOB_UNREADABLE = CHAP.define(
     "job.unreadable", "{where} answered {answer}, which is neither a job status nor a job carrying one"
 )
 
-JOB_UNRECOGNISED = CHAP.define(
-    "job.unrecognised", "job {job} is {status}, which is none of the statuses a Chap job is known to report"
+JOB_NOT_SETTLED = CHAP.define(
+    "job.not_settled", "job {job} did not settle within follow_for ({follow_for}); its last status was {status}"
 )
 
 JOB_UNSETTLED = CHAP.define(

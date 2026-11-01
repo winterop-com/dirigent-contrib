@@ -28,12 +28,16 @@ The status is a Celery state, read in any case:
 | `PENDING`, `RECEIVED`, `STARTED`, `RETRY` | waits. |
 | `SUCCESS` | reads the result helper and ends. |
 | `FAILURE`, `REVOKED`, `REJECTED` | fails, with the end of the job's log from `/v1/jobs/{id}/logs` written into the run, and the job's `error` in the message when Chap gave one. |
+| any other word | waits, as for a status a newer Chap adds, and the run logs it once per job as an unknown status. |
 
-Any other answer fails the step rather than leaving it waiting: a status outside the table as
-`chap.job.unrecognised`, and an answer with no status as `chap.job.unreadable`, both refusals that are
-not retried. A job that stays `PENDING` or `STARTED` waits until the step's `deadline`, which
-`on_timeout` then settles; give a job-backed step a `deadline`, because an operator has none of its
-own.
+An answer with no status at all fails the step as `chap.job.unreadable`, a refusal that is not
+retried.
+
+A job is followed for `follow_for`, 6h unless the step says otherwise, counted from its
+submission. A job still waiting after that fails the step as `chap.job.not_settled`, naming the job
+and the last status it reported; the failure is transient, so the step's retry policy decides
+whether the work is submitted again. A job that settles is read even when it settles late. A step
+`deadline` shorter than `follow_for` ends the wait first, settled by the step's `on_timeout`.
 
 The reading was checked against chap-core v2.5.1, the newest release, and master at `d78b4c23`; the
 [pack's page](index.md#rehearsed-against) keeps that record.
@@ -83,6 +87,7 @@ Chap as written. Note that `maskedRanges` deletes the target values inside the r
 | `provided_data` | `object[]` |  |  | Observations as Chap spells them: `{period, orgUnit, value, featureName}`, one per row. |
 | `csv` | `string or null` |  | `null` | A wide Chap CSV, the shape `aggregate_to_chap_csv` writes: `time_period`, `location`, and one column per feature. Each feature cell becomes one observation, sent beside `provided_data`. |
 | `max_observations` | `integer` |  | `500000` | The most observations `csv` may unfold to, columns times rows; a larger one fails the step and sends nothing. |
+| `follow_for` | `string (humane-duration)` |  | `"6h"` | How long the step follows the Chap job before failing it; a shorter step `deadline` ends it sooner. |
 | `name` | `string` | yes |  | The name the dataset is stored under. |
 | `geojson` | `object` | yes |  | The org units as a GeoJSON FeatureCollection, each feature's `id` the location its observations name. |
 | `data_to_be_fetched` | `object[]` |  |  | Features Chap fetches itself, as Chap spells them: `{featureName, dataSourceName}`. |
@@ -118,6 +123,7 @@ dataset lacks (422) are refusals.
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `connection` | `string` | yes |  | The code of the chap connection naming the server. |
+| `follow_for` | `string (humane-duration)` |  | `"6h"` | How long the step follows the Chap job before failing it; a shorter step `deadline` ends it sooner. |
 | `name` | `string` | yes |  | The name the backtest is stored under. |
 | `model_id` | `integer or string` | yes |  | The configured model to evaluate, by its id or its name. |
 | `dataset_id` | `integer` | yes |  | The stored dataset to evaluate it on, as `chap.dataset.import` outputs it. |
@@ -158,6 +164,7 @@ future-weather provider. A finished job whose result has no integer `id` fails t
 | `provided_data` | `object[]` |  |  | Observations as Chap spells them: `{period, orgUnit, value, featureName}`, one per row. |
 | `csv` | `string or null` |  | `null` | A wide Chap CSV, the shape `aggregate_to_chap_csv` writes: `time_period`, `location`, and one column per feature. Each feature cell becomes one observation, sent beside `provided_data`. |
 | `max_observations` | `integer` |  | `500000` | The most observations `csv` may unfold to, columns times rows; a larger one fails the step and sends nothing. |
+| `follow_for` | `string (humane-duration)` |  | `"6h"` | How long the step follows the Chap job before failing it; a shorter step `deadline` ends it sooner. |
 | `prediction_setup_id` | `integer` | yes |  | The saved prediction setup to forecast with, which fixes the model and its target. |
 | `name` | `string` | yes |  | The name the prediction is stored under. |
 | `geojson` | `object` | yes |  | The org units as a GeoJSON FeatureCollection, each feature's `id` the location its observations name. |
@@ -383,7 +390,7 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 | `chap.job.failed` | `job {job} ended {status}: {error}` |
 | `chap.job.unknown` | `Chap no longer knows job {job}` |
 | `chap.job.unreadable` | `{where} answered {answer}, which is neither a job status nor a job carrying one` |
-| `chap.job.unrecognised` | `job {job} is {status}, which is none of the statuses a Chap job is known to report` |
+| `chap.job.not_settled` | `job {job} did not settle within follow_for ({follow_for}); its last status was {status}` |
 | `chap.job.unsettled` | `job {job} is {status} rather than SUCCESS, so it has no result to collect` |
 | `chap.observations.missing` | `a step that sends observations to Chap needs provided_data, csv, or both` |
 | `chap.csv.missing_column` | `the csv has no {column} column, which every row needs` |

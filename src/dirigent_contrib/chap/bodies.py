@@ -12,9 +12,9 @@ from typing import Final
 
 from pydantic import ConfigDict, Field, JsonValue, model_validator
 
-from dirigent_contrib.chap.jobs import ChapJobConfig
+from dirigent_common import BlockModel
 from dirigent_contrib.chap.messages import CSV_BAD_VALUE, CSV_MISSING_COLUMN, CSV_TOO_LARGE, OBSERVATIONS_MISSING
-from dirigent_plugin import BlockFailure, ErrorClass
+from dirigent_plugin import BlockFailure, ConnectionRef, ErrorClass
 
 #: The columns of a Chap CSV that are not features.
 PERIOD_COLUMN: Final = "time_period"
@@ -24,10 +24,13 @@ LOCATION_COLUMN: Final = "location"
 MAX_OBSERVATIONS: Final = 500_000
 
 
-class PassThroughConfig(ChapJobConfig):
+class PassThroughConfig(BlockModel):
     """A config whose undeclared keys are sent to Chap as written."""
 
     model_config = ConfigDict(use_attribute_docstrings=True, extra="allow")
+
+    connection: ConnectionRef
+    """The code of the chap connection naming the server."""
 
 
 def camel(name: str) -> str:
