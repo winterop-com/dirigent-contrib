@@ -90,8 +90,8 @@ A document that names a remote system cannot run against a mock, so `dg run --lo
 against the server its connection names:
 
 ```bash
-dg run --local examples/chap/chap-models.yaml
-dg run --local examples/chap/chap-predict-and-read.yaml -p prediction_setup_id=1
+dg run --local src/dirigent_contrib/chap/shelves/chap/chap-models.yaml
+dg run --local src/dirigent_contrib/chap/shelves/chap/chap-predict-and-read.yaml -p prediction_setup_id=1
 ```
 
 `--connections FILE` replaces a carried connection by code, which points a document at your
