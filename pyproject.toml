@@ -1,6 +1,6 @@
 [project]
 name = "dirigent-contrib"
-version = "0.28.0"
+version = "0.29.0"
 description = "Block packs for dirigent that reach outside systems: Chap and the open climate service."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -11,8 +11,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "dirigent-common==0.28.0",
-    "dirigent-plugin==0.28.0",
+    "dirigent-common==0.29.0",
+    "dirigent-plugin==0.29.0",
     "httpx2>=2.12.0",
     "pydantic>=2.13.5",
 ]
@@ -27,7 +27,7 @@ climate = "dirigent_contrib.climate:plugin"
 
 [dependency-groups]
 dev = [
-    "dirigent-testing==0.28.0",
+    "dirigent-testing==0.29.0",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.7",
     "mypy>=1.19",
