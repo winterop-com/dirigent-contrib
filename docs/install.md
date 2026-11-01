@@ -20,7 +20,7 @@ and its example shelves are in `dg examples list`. There is no config file to ed
 registry to touch.
 
 ```bash
-dg blocks
+dg blocks list
 dg examples list --plugin chap
 dg examples list --plugin climate
 ```
