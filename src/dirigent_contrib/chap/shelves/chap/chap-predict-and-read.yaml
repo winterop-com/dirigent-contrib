@@ -13,7 +13,7 @@
 # The observations come in as a parameter, so the same document forecasts each month with
 # that month's data: -p observations='[...]', rows spelled the way Chap spells them.
 #
-#   dg run --local examples/chap/chap-predict-and-read.yaml -p prediction_setup_id=1
+#   dg run --local src/dirigent_contrib/chap/shelves/chap/chap-predict-and-read.yaml -p prediction_setup_id=1
 #
 # TO MAKE IT YOURS: a copy made from this document names `chap-local` under
 # requires.connections rather than carrying it, so create a `chap` connection under that code

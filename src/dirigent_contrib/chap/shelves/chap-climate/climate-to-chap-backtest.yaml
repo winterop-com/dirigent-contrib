@@ -20,7 +20,7 @@
 # The aggregation reads the public demo of the open climate service, which is read-only to
 # this document; the dataset and the backtest are written to a local Chap.
 #
-#   dg run --local examples/chap-climate/climate-to-chap-backtest.yaml -p cases=@cases.json
+#   dg run --local src/dirigent_contrib/chap/shelves/chap-climate/climate-to-chap-backtest.yaml -p cases=@cases.json
 #
 # TO MAKE IT YOURS: a copy names `climate-demo` and `chap-local` under requires.connections
 # rather than carrying them, so create a `climate` and a `chap` connection under those codes,

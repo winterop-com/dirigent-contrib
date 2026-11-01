@@ -10,7 +10,7 @@
 # checkout with CHAP_API_TOKEN unset. A server that sets it answers 401 without one; add the
 # token to the connection and every block sends it as `Authorization: Bearer`.
 #
-#   dg run --local examples/chap/chap-models.yaml
+#   dg run --local src/dirigent_contrib/chap/shelves/chap/chap-models.yaml
 
 format: dirigent/v1
 kind: pipeline

@@ -13,7 +13,7 @@
 # says how long this run is prepared to wait, and the engine probes every 30s meanwhile
 # without holding a worker.
 #
-#   dg run --local examples/chap/chap-backtest.yaml -p dataset_id=1 -p model_id=naive_model
+#   dg run --local src/dirigent_contrib/chap/shelves/chap/chap-backtest.yaml -p dataset_id=1 -p model_id=naive_model
 
 format: dirigent/v1
 kind: pipeline

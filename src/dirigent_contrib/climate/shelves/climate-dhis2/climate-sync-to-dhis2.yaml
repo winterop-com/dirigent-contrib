@@ -22,7 +22,7 @@
 # the geometries name; point `dhis2-demo` at your own instance, with geometries whose ids are
 # its org unit uids, before turning dry_run off.
 #
-#   dg run --local examples/climate-dhis2/climate-sync-to-dhis2.yaml
+#   dg run --local src/dirigent_contrib/climate/shelves/climate-dhis2/climate-sync-to-dhis2.yaml
 #
 # TO MAKE IT YOURS: a copy names `climate-local` and `dhis2-demo` under requires.connections
 # rather than carrying them, so create a `climate` and a `dhis2` connection under those codes.

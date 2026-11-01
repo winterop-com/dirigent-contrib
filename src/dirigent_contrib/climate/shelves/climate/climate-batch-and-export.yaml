@@ -15,7 +15,7 @@
 #
 # This writes jobs and deliveries, so it points at a service you run yourself, not the demo.
 #
-#   dg run --local examples/climate/climate-batch-and-export.yaml
+#   dg run --local src/dirigent_contrib/climate/shelves/climate/climate-batch-and-export.yaml
 #
 # TO MAKE IT YOURS: a copy names `climate-local` under requires.connections rather than
 # carrying it, so create a `climate` connection under that code, name an export your
