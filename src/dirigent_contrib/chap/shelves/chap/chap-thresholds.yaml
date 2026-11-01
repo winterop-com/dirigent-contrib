@@ -11,7 +11,7 @@
 # The periods are written at the dataset's own frequency. A dataset with no disease_cases, or
 # no complete year to compute a baseline from, is a refusal.
 #
-#   dg run --local examples/chap/chap-thresholds.yaml -p dataset_id=1
+#   dg run --local src/dirigent_contrib/chap/shelves/chap/chap-thresholds.yaml -p dataset_id=1
 
 format: dirigent/v1
 kind: pipeline

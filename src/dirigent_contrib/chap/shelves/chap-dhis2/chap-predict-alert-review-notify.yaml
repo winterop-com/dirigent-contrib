@@ -36,7 +36,7 @@
 # Leone demo database; THE NOTIFY STEP SENDS REAL MESSAGES to whoever the DHIS2 behind
 # `dhis2-local` assigns to it.
 #
-#   dg run --local examples/chap-dhis2/chap-predict-alert-review-notify.yaml \
+#   dg run --local src/dirigent_contrib/chap/shelves/chap-dhis2/chap-predict-alert-review-notify.yaml \
 #     -p prediction_setup_id=1 -p alert_policy_id=1
 #
 # TO MAKE IT YOURS: a copy names `chap-local` and `dhis2-local` under requires.connections

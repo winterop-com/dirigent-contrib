@@ -11,7 +11,7 @@
 # Chap forecasts is disease_cases unless the backtest says otherwise. OU2 has no polygon in the
 # GeoJSON, so the summary rejects it.
 #
-#   dg run --local examples/chap/chap-import-dataset-dry-run.yaml
+#   dg run --local src/dirigent_contrib/chap/shelves/chap/chap-import-dataset-dry-run.yaml
 
 format: dirigent/v1
 kind: pipeline

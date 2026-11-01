@@ -8,7 +8,7 @@
 # An ingestion downloads from the dataset's source -- CHIRPS, ERA5-Land -- and can take hours
 # for a long range, so the step's timeout is generous. A read-only instance refuses it.
 #
-#   dg run --local examples/climate/climate-ingest.yaml
+#   dg run --local src/dirigent_contrib/climate/shelves/climate/climate-ingest.yaml
 
 format: dirigent/v1
 kind: pipeline

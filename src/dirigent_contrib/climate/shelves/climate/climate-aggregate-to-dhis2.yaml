@@ -15,7 +15,7 @@
 # with storage.read. A long range over many org units takes minutes, which is what `timeout`
 # is for.
 #
-#   dg run --local examples/climate/climate-aggregate-to-dhis2.yaml
+#   dg run --local src/dirigent_contrib/climate/shelves/climate/climate-aggregate-to-dhis2.yaml
 #
 # The export named here must be one the instance's climate-service.yaml declares under
 # `exports`; ask its operator which, or run aggregate_by_features for a result no export
