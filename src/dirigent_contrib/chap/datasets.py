@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, JsonValue
 from dirigent_common import BlockModel
 from dirigent_contrib.chap.bodies import ObservationsConfig, body_of
 from dirigent_contrib.chap.connection import client_for
-from dirigent_contrib.chap.jobs import JOB_POLL, ChapJobOperator, job_id_of, submit
+from dirigent_contrib.chap.jobs import JOB_POLL, ChapJobConfig, ChapJobOperator, job_id_of, submit
 from dirigent_contrib.chap.messages import DATASET_NOT_VALIDATED, DATASET_REJECTED
 from dirigent_contrib.chap.web import mapping
 from dirigent_plugin import BlockFailure, ErrorClass, OperatorSpec, RemoteHandle, StepContext
@@ -31,7 +31,7 @@ REJECTED: Final = "rejected"
 REJECTED_COUNT: Final = "rejected_count"
 
 
-class ChapDatasetImportConfig(ObservationsConfig):
+class ChapDatasetImportConfig(ChapJobConfig, ObservationsConfig):
     """What one dataset import sends.
 
     Any undeclared key, such as `dataSources` or `maskedRanges`, is sent to Chap as written.

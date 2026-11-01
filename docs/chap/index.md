@@ -35,7 +35,8 @@ Chap tags a release every two weeks, so the blocks keep their coupling to it sma
   a backtest id, a prediction id -- are lifted out.
 - A job is followed at `/v1/jobs/{id}`, which is the stable part of the API, and its status
   decides alone. A released Chap answers with the bare status and master with the whole job;
-  both are read, and an answer that is neither fails the step rather than leaving it waiting.
+  both are read. A status Chap adds later keeps the step waiting, logged once per job, and
+  `follow_for` (6h by default) bounds how long any job is followed.
   [Rehearsed against](#rehearsed-against) names the Chap releases this was checked against.
 
 ## Alert verification

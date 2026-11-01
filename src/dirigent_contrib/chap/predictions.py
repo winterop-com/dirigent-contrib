@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, JsonValue
 from dirigent_common import BlockModel
 from dirigent_contrib.chap.bodies import ObservationsConfig, body_of
 from dirigent_contrib.chap.connection import client_for
-from dirigent_contrib.chap.jobs import JOB_POLL, ChapJobOperator, job_id_of, submit
+from dirigent_contrib.chap.jobs import JOB_POLL, ChapJobConfig, ChapJobOperator, job_id_of, submit
 from dirigent_contrib.chap.messages import NOT_A_LIST, PREDICTION_NOT_STORED
 from dirigent_contrib.chap.web import call_json, mapping
 from dirigent_plugin import BlockFailure, ConnectionRef, ErrorClass, Operator, OperatorSpec, RemoteHandle, StepContext
@@ -28,7 +28,7 @@ def entries_path(prediction_id: int) -> str:
 DEFAULT_QUANTILES: Final = (0.1, 0.5, 0.9)
 
 
-class ChapPredictionRunConfig(ObservationsConfig):
+class ChapPredictionRunConfig(ChapJobConfig, ObservationsConfig):
     """What one forecast from a saved setup sends.
 
     Any undeclared key, such as `type`, is sent to Chap as written.
