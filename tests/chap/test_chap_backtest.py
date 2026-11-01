@@ -6,7 +6,7 @@ from dirigent_contrib.chap.backtests import ChapBacktestRunConfig, ChapBacktestR
 from dirigent_contrib.chap.messages import JOB_NOT_SUBMITTED
 from dirigent_plugin import BlockFailure, ErrorClass, RemoteHandle
 from dirigent_testing import FakeContext, call_block
-from tests.chap.chapserver import CONNECTION, ChapServer, job, settle
+from tests.chap.chapserver import CONNECTION, RELEASES, ChapServer, settle
 
 CREATE = "/v1/analytics/create-backtest"
 
@@ -49,8 +49,9 @@ async def test_every_declared_parameter_is_sent_camel_case(ctx: FakeContext, cha
     }
 
 
+@pytest.mark.parametrize("chap", RELEASES, indirect=True)
 async def test_the_finished_backtest_is_read_with_its_metrics_lifted(ctx: FakeContext, chap: ChapServer) -> None:
-    chap.on("GET", "/v1/jobs/job-b", body=job("job-b", "SUCCESS"))
+    chap.job("job-b", "SUCCESS")
     chap.on("GET", "/v1/jobs/job-b/evaluation_result", body=BACKTEST)
     block = ChapBacktestRunOperator()
     config = ChapBacktestRunConfig.model_validate(

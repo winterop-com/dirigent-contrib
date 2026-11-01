@@ -33,8 +33,10 @@ Chap tags a release every two weeks, so the blocks keep their coupling to it sma
   Chap adds is usable the day it ships.
 - An output hands on Chap's JSON as it comes. Only the ids the next step needs -- a dataset id,
   a backtest id, a prediction id -- are lifted out.
-- A job is followed at `/v1/jobs/{id}`, which is the stable part of the API, and its `status`
-  decides alone. A status Chap adds later keeps the step waiting rather than failing it.
+- A job is followed at `/v1/jobs/{id}`, which is the stable part of the API, and its status
+  decides alone. A released Chap answers with the bare status and master with the whole job;
+  both are read, and an answer that is neither fails the step rather than leaving it waiting.
+  [Rehearsed against](#rehearsed-against) names the Chap releases this was checked against.
 
 ## Alert verification
 
@@ -106,6 +108,7 @@ an unreviewed forecast fails the run where an operator sees it instead.
 | --- | --- |
 | chap-core 2.5.1 | Every request and answer shape in the tests is taken from 2.5.1's OpenAPI document and its source (`rest_api/v1/jobs.py`, `v1/routers/analytics.py`, `v1/routers/crud.py`, `auth.py`). |
 | The public demo at `https://climate-demo.dhis2.org/chap/stable`, 2.5.1 | Read live: `/system/info` answers `auth_required: true`, and `/v1/crud/configured-models` refuses a call without a token with 401, which is the case the connection check reports. Its OpenAPI document lists the alert routes, and `GET /v1/crud/alerts` refuses a call without a token with 401. No token for the demo was available, so nothing behind it was called, and no alert was ever written to it. |
+| `GET /v1/jobs/{id}`: chap-core v2.5.1 and `master` at `d78b4c23` | Read from the source at both: v2.5.1's `get_job_status` answers with the bare status, master's `get_job` with the whole job since `ef17a258`, and both report Celery's states (`rest_api/celery_tasks.py`). The tests answer every job-backed block in each shape. Check this row again at each Chap release. |
 | chap-core `master` at `ff8d1c0a` | The alert shapes and states (`pending`, `approved`, `declined`) are taken from `database/alert_tables.py`, `rest_api/data_models.py` and the alert routes in `v1/routers/crud.py`, which Chap marks experimental, and from `services/alert_service.py`, which raises a setup's alerts when its forecast finishes. |
 
 Unit tests answer every block from a scripted Chap; nothing in them reaches the network.

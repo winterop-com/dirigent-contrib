@@ -7,12 +7,36 @@ group and takes a `connection` naming a [`chap` connection](connection.md) by it
 
 Chap changes fast, so these blocks lean on the parts of its API that do not: a job-backed block
 submits through its own endpoint and then follows `/v1/jobs/{id}`, deciding from the job's
-`status` alone before it asks a result helper for anything. `PENDING` and `STARTED` wait, and
-so does any status Chap adds later; `SUCCESS` ends the step; `FAILURE` and `REVOKED` fail it,
-with the end of the job's log from `/v1/jobs/{id}/logs` written into the run. Cancelling a step
-sends `POST /v1/jobs/{id}/cancel`. A step's config carries the request body's fields in
-snake_case; an undeclared key is sent to Chap as written, in Chap's camelCase, and the output
-hands on Chap's JSON as it comes rather than pinning its shape.
+status alone before it asks a result helper for anything. Cancelling a step sends
+`POST /v1/jobs/{id}/cancel`. A step's config carries the request body's fields in snake_case; an
+undeclared key is sent to Chap as written, in Chap's camelCase, and the output hands on Chap's
+JSON as it comes rather than pinning its shape.
+
+## Following a job
+
+`GET /v1/jobs/{id}` answers in one of two shapes, and both are read:
+
+| Chap | Answer |
+| --- | --- |
+| Releases up to v2.5.1 | The bare status, a JSON string such as `"SUCCESS"`. |
+| master since `ef17a258` | The whole job: `status`, and the reason a job failed under `error`. |
+
+The status is a Celery state, read in any case:
+
+| Status | The step |
+| --- | --- |
+| `PENDING`, `RECEIVED`, `STARTED`, `RETRY` | waits. |
+| `SUCCESS` | reads the result helper and ends. |
+| `FAILURE`, `REVOKED`, `REJECTED` | fails, with the end of the job's log from `/v1/jobs/{id}/logs` written into the run, and the job's `error` in the message when Chap gave one. |
+
+Any other answer fails the step rather than leaving it waiting: a status outside the table as
+`chap.job.unrecognised`, and an answer with no status as `chap.job.unreadable`, both refusals that are
+not retried. A job that stays `PENDING` or `STARTED` waits until the step's `deadline`, which
+`on_timeout` then settles; give a job-backed step a `deadline`, because an operator has none of its
+own.
+
+The reading was checked against chap-core v2.5.1, the newest release, and master at `d78b4c23`; the
+[pack's page](index.md#rehearsed-against) keeps that record.
 
 **Idempotent** says whether re-running the block after an unclear failure is safe. No block in
 this pack runs code on the worker.
@@ -358,6 +382,8 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 | `chap.job.running` | `job {job} is {status}` |
 | `chap.job.failed` | `job {job} ended {status}: {error}` |
 | `chap.job.unknown` | `Chap no longer knows job {job}` |
+| `chap.job.unreadable` | `{where} answered {answer}, which is neither a job status nor a job carrying one` |
+| `chap.job.unrecognised` | `job {job} is {status}, which is none of the statuses a Chap job is known to report` |
 | `chap.job.unsettled` | `job {job} is {status} rather than SUCCESS, so it has no result to collect` |
 | `chap.observations.missing` | `a step that sends observations to Chap needs provided_data, csv, or both` |
 | `chap.csv.missing_column` | `the csv has no {column} column, which every row needs` |

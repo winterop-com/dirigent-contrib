@@ -5,12 +5,13 @@ from pydantic import SecretStr
 
 from dirigent_contrib.chap.connection import ChapConnectionConfig
 from dirigent_testing import FakeContext
-from tests.chap.chapserver import BASE_URL, CONNECTION, ChapServer
+from tests.chap.chapserver import BASE_URL, CONNECTION, MASTER, ChapServer
 
 
 @pytest.fixture
-def chap() -> ChapServer:
-    return ChapServer()
+def chap(request: pytest.FixtureRequest) -> ChapServer:
+    """The scripted Chap, in the release a test parametrises it with, else master."""
+    return ChapServer(getattr(request, "param", MASTER))
 
 
 @pytest.fixture

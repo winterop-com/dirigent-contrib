@@ -13,7 +13,7 @@ from dirigent_contrib.chap.predictions import (
 )
 from dirigent_plugin import BlockFailure, ErrorClass, RemoteHandle
 from dirigent_testing import FakeContext, call_block
-from tests.chap.chapserver import CONNECTION, ChapServer, job, settle
+from tests.chap.chapserver import CONNECTION, RELEASES, ChapServer, settle
 
 RUN = "/v1/crud/prediction-setups/5/run"
 
@@ -50,9 +50,10 @@ async def test_an_unknown_setup_an_archived_model_and_bad_data_are_refusals(
     assert raised.value.error_class is ErrorClass.REJECTED
 
 
+@pytest.mark.parametrize("chap", RELEASES, indirect=True)
 async def test_the_finished_prediction_is_read_back(ctx: FakeContext, chap: ChapServer) -> None:
     prediction = {"id": 11, "name": "next quarter", "nPeriods": 3}
-    chap.on("GET", "/v1/jobs/job-p", body=job("job-p", "SUCCESS"))
+    chap.job("job-p", "SUCCESS")
     chap.on("GET", "/v1/jobs/job-p/prediction_result", body=prediction)
     block = ChapPredictionRunOperator()
     config = ChapPredictionRunConfig.model_validate(_config())
@@ -93,7 +94,7 @@ async def test_the_default_quantiles_are_the_median_and_its_band(ctx: FakeContex
 async def test_a_finished_job_without_an_integer_id_fails_the_fetch(
     prediction: Any, ctx: FakeContext, chap: ChapServer
 ) -> None:
-    chap.on("GET", "/v1/jobs/job-p", body=job("job-p", "SUCCESS"))
+    chap.job("job-p", "SUCCESS")
     chap.on("GET", "/v1/jobs/job-p/prediction_result", body=prediction)
     block = ChapPredictionRunOperator()
     config = ChapPredictionRunConfig.model_validate(_config())
