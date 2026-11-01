@@ -1,5 +1,6 @@
 """``chap.dataset.import``: validation, the import job it follows, and the dataset id it ends with."""
 
+import json
 from typing import Any
 
 import pytest
@@ -10,7 +11,7 @@ from dirigent_contrib.chap.datasets import ChapDatasetImportConfig, ChapDatasetI
 from dirigent_contrib.chap.messages import CSV_MISSING_COLUMN, DATASET_REJECTED, OBSERVATIONS_MISSING
 from dirigent_plugin import BlockFailure, ErrorClass, ProbeStatus, RemoteHandle
 from dirigent_testing import FakeContext, call_block
-from tests.chap.chapserver import CONNECTION, ChapServer, job, settle
+from tests.chap.chapserver import CONNECTION, RELEASED, RELEASES, ChapServer, settle
 
 MAKE = "/v1/analytics/make-dataset"
 
@@ -58,11 +59,10 @@ async def test_the_body_is_camel_case_and_passes_undeclared_keys_through(ctx: Fa
     assert {"dry_run", "on_rejected", "connection", "csv", "provided_data"}.isdisjoint(body)
 
 
+@pytest.mark.parametrize("chap", RELEASES, indirect=True)
 async def test_an_import_is_followed_to_the_dataset_it_stored(ctx: FakeContext, chap: ChapServer) -> None:
     chap.on("POST", MAKE, body={"id": "job-1", "importedCount": 1, "rejected": [REJECTION]})
-    chap.on("GET", "/v1/jobs/job-1", body=job("job-1", "PENDING"))
-    chap.on("GET", "/v1/jobs/job-1", body=job("job-1", "STARTED"))
-    chap.on("GET", "/v1/jobs/job-1", body=job("job-1", "SUCCESS"))
+    chap.job("job-1", "PENDING").job("job-1", "STARTED").job("job-1", "SUCCESS")
     chap.on("GET", "/v1/jobs/job-1/database_result", body={"id": 42})
     block = ChapDatasetImportOperator()
     config = ChapDatasetImportConfig.model_validate(_config())
@@ -95,32 +95,88 @@ async def test_on_rejected_fail_imports_once_validation_is_clean(ctx: FakeContex
     assert [request.url.params.get("dryRun") for request in chap.sent("POST", MAKE)] == ["true", None]
 
 
+@pytest.mark.parametrize("chap", RELEASES, indirect=True)
 async def test_a_failed_job_fails_with_its_error_and_writes_its_log(ctx: FakeContext, chap: ChapServer) -> None:
-    chap.on("GET", "/v1/jobs/job-1", body=job("job-1", "FAILURE", error="harmonisation broke"))
+    chap.job("job-1", "FAILURE", error="harmonisation broke")
     chap.on("GET", "/v1/jobs/job-1/logs", body="line one\nTraceback: boom")
     block = ChapDatasetImportOperator()
     config = ChapDatasetImportConfig.model_validate(_config())
     probes, output = await settle(block, block.handle("job-1"), config, ctx)
     assert probes[-1].status is ProbeStatus.FAILED
-    assert probes[-1].message is not None and "harmonisation broke" in probes[-1].message
+    reason = "no error was recorded" if chap.release == RELEASED else "harmonisation broke"
+    assert probes[-1].message is not None and reason in probes[-1].message
     assert output is None
     assert ctx.log.entries[-1][2]["log"] == "line one\nTraceback: boom"
     assert chap.sent("GET", "/v1/jobs/job-1/database_result") == []
 
 
-async def test_a_revoked_job_fails(ctx: FakeContext, chap: ChapServer) -> None:
-    chap.on("GET", "/v1/jobs/job-1", body=job("job-1", "REVOKED"))
+@pytest.mark.parametrize("chap", RELEASES, indirect=True)
+@pytest.mark.parametrize("status", ["REVOKED", "REJECTED"])
+async def test_a_job_ended_without_success_fails(status: str, ctx: FakeContext, chap: ChapServer) -> None:
+    chap.job("job-1", status)
     block = ChapDatasetImportOperator()
     probes, _ = await settle(block, block.handle("job-1"), ChapDatasetImportConfig.model_validate(_config()), ctx)
     assert probes[-1].status is ProbeStatus.FAILED
 
 
-async def test_a_status_chap_adds_later_keeps_the_step_waiting(ctx: FakeContext, chap: ChapServer) -> None:
-    chap.on("GET", "/v1/jobs/job-1", body=job("job-1", "RETRY"))
+@pytest.mark.parametrize("chap", RELEASES, indirect=True)
+@pytest.mark.parametrize("status", ["PENDING", "RECEIVED", "STARTED", "RETRY", "started"])
+async def test_an_unfinished_job_keeps_the_step_waiting(status: str, ctx: FakeContext, chap: ChapServer) -> None:
+    chap.job("job-1", status)
     block = ChapDatasetImportOperator()
     config = ChapDatasetImportConfig.model_validate(_config())
     probe = await block.probe(block.handle("job-1"), config, ctx.as_context())
     assert probe.status is ProbeStatus.RUNNING
+    assert probe.message == f"job job-1 is {status.upper()}"
+
+
+async def test_a_released_chaps_bare_status_settles_the_step(ctx: FakeContext) -> None:
+    """Chap v2.5.1 answers ``GET /v1/jobs/{id}`` with ``"SUCCESS"``, not with a job object."""
+    chap = ChapServer(RELEASED)
+    ctx.handler = chap
+    chap.on("GET", "/v1/jobs/job-1", text='"SUCCESS"', headers={"content-type": "application/json"})
+    chap.on("GET", "/v1/jobs/job-1/database_result", body={"id": 42})
+    block = ChapDatasetImportOperator()
+    config = ChapDatasetImportConfig.model_validate(_config())
+    probes, output = await settle(block, block.handle("job-1"), config, ctx)
+    assert [probe.status for probe in probes] == [ProbeStatus.SUCCEEDED]
+    assert isinstance(output, ChapDatasetImportOutput) and output.dataset_id == 42
+
+
+@pytest.mark.parametrize("chap", RELEASES, indirect=True)
+async def test_a_status_no_chap_reports_fails_the_step(ctx: FakeContext, chap: ChapServer) -> None:
+    chap.job("job-1", "PROGRESSING")
+    block = ChapDatasetImportOperator()
+    config = ChapDatasetImportConfig.model_validate(_config())
+    with pytest.raises(BlockFailure) as refused:
+        await block.probe(block.handle("job-1"), config, ctx.as_context())
+    assert refused.value.code == "chap.job.unrecognised"
+    assert refused.value.error_class is ErrorClass.REJECTED
+    assert "PROGRESSING" in str(refused.value)
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        pytest.param("", id="empty-string"),
+        pytest.param({}, id="empty-object"),
+        pytest.param({"id": "job-1", "status": None}, id="null-status"),
+        pytest.param({"id": "job-1", "state": "SUCCESS"}, id="no-status"),
+        pytest.param({"id": "job-1", "status": 3}, id="number-status"),
+        pytest.param(["SUCCESS"], id="list"),
+        pytest.param(None, id="null"),
+        pytest.param(7, id="number"),
+    ],
+)
+async def test_an_answer_that_is_not_a_job_fails_the_step(answer: Any, ctx: FakeContext, chap: ChapServer) -> None:
+    chap.on("GET", "/v1/jobs/job-1", text=json.dumps(answer))
+    block = ChapDatasetImportOperator()
+    config = ChapDatasetImportConfig.model_validate(_config())
+    with pytest.raises(BlockFailure) as refused:
+        await block.probe(block.handle("job-1"), config, ctx.as_context())
+    assert refused.value.code == "chap.job.unreadable"
+    assert refused.value.error_class is ErrorClass.REJECTED
+    assert "GET /v1/jobs/job-1" in str(refused.value)
 
 
 async def test_a_job_chap_no_longer_knows_is_gone(ctx: FakeContext, chap: ChapServer) -> None:
@@ -130,8 +186,9 @@ async def test_a_job_chap_no_longer_knows_is_gone(ctx: FakeContext, chap: ChapSe
     assert probe.status is ProbeStatus.GONE
 
 
+@pytest.mark.parametrize("chap", RELEASES, indirect=True)
 async def test_fetch_reads_the_status_before_asking_the_result_helper(ctx: FakeContext, chap: ChapServer) -> None:
-    chap.on("GET", "/v1/jobs/job-1", body=job("job-1", "FAILURE"))
+    chap.job("job-1", "FAILURE")
     block = ChapDatasetImportOperator()
     config = ChapDatasetImportConfig.model_validate(_config())
     with pytest.raises(BlockFailure) as raised:

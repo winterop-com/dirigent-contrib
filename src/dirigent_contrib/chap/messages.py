@@ -38,6 +38,14 @@ JOB_FAILED = CHAP.define("job.failed", "job {job} ended {status}: {error}")
 
 JOB_UNKNOWN = CHAP.define("job.unknown", "Chap no longer knows job {job}")
 
+JOB_UNREADABLE = CHAP.define(
+    "job.unreadable", "{where} answered {answer}, which is neither a job status nor a job carrying one"
+)
+
+JOB_UNRECOGNISED = CHAP.define(
+    "job.unrecognised", "job {job} is {status}, which is none of the statuses a Chap job is known to report"
+)
+
 JOB_UNSETTLED = CHAP.define(
     "job.unsettled",
     "job {job} is {status} rather than SUCCESS, so it has no result to collect",

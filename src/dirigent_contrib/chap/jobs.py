@@ -3,8 +3,13 @@
 Every job-backed block submits through its own endpoint and then shares this: the status at
 ``/v1/jobs/{id}`` is what decides, and a result helper is only asked once that status says
 ``SUCCESS``, because a helper does not answer a failed job with a clean refusal.
+
+A released Chap answers ``/v1/jobs/{id}`` with the bare status, a JSON string such as
+``"SUCCESS"``; Chap's master answers with the whole job, the status under ``status`` and a
+failure's reason under ``error``. Both are read.
 """
 
+import json
 from datetime import timedelta
 from typing import Any, ClassVar, Final
 
@@ -13,8 +18,16 @@ from pydantic import BaseModel, JsonValue
 
 from dirigent_common import BlockModel
 from dirigent_contrib.chap.connection import client_for
-from dirigent_contrib.chap.messages import JOB_FAILED, JOB_NOT_SUBMITTED, JOB_RUNNING, JOB_UNKNOWN, JOB_UNSETTLED
-from dirigent_contrib.chap.web import call_json, json_of, mapping, refuse
+from dirigent_contrib.chap.messages import (
+    JOB_FAILED,
+    JOB_NOT_SUBMITTED,
+    JOB_RUNNING,
+    JOB_UNKNOWN,
+    JOB_UNREADABLE,
+    JOB_UNRECOGNISED,
+    JOB_UNSETTLED,
+)
+from dirigent_contrib.chap.web import QUOTED, call_json, json_of, mapping, refuse
 from dirigent_contrib.limits import BoundedClient
 from dirigent_contrib.paths import is_plain_id, segment
 from dirigent_plugin import (
@@ -31,8 +44,11 @@ from dirigent_plugin import (
 #: The status a job that finished well reports.
 SUCCESS: Final = "SUCCESS"
 
-#: The statuses a job never leaves, other than success.
-FAILED: Final = frozenset({"FAILURE", "REVOKED"})
+#: The statuses a job never leaves, other than success: Celery's final states.
+FAILED: Final = frozenset({"FAILURE", "REVOKED", "REJECTED"})
+
+#: The statuses of a job still queued or running: Celery's unfinished states.
+RUNNING: Final = frozenset({"PENDING", "RECEIVED", "STARTED", "RETRY"})
 
 #: How often a Chap job is probed when the step does not say.
 JOB_POLL: Final = timedelta(seconds=30)
@@ -47,14 +63,25 @@ def job_path(job_id: str, tail: str = "") -> str:
 
 
 async def read_job(client: BoundedClient, job_id: str) -> dict[str, JsonValue] | None:
-    """Read a job's description, or None when Chap does not know it."""
+    """Read a job as an object whose ``status`` is a word in capitals, or None when Chap does not know it.
+
+    A bare status string becomes an object holding only that status. Any other answer, or a job
+    without a status, is refused rather than read as one still running.
+    """
     path = job_path(job_id)
+    where = f"GET {path}"
     response = await client.request("GET", path)
     if response.status_code == 404:
         return None
     if response.is_error:
-        raise refuse(response, f"GET {path}")
-    return mapping(json_of(response, f"GET {path}"))
+        raise refuse(response, where)
+    answer = json_of(response, where)
+    job = {"status": answer} if isinstance(answer, str) else mapping(answer)
+    status = job.get("status")
+    if not isinstance(status, str) or not status.strip():
+        quoted = json.dumps(answer)[:QUOTED]
+        raise BlockFailure(JOB_UNREADABLE, error_class=ErrorClass.REJECTED, where=where, answer=quoted)
+    return {**job, "status": status.strip().upper()}
 
 
 async def log_tail(client: BoundedClient, job_id: str) -> str:
@@ -76,13 +103,15 @@ async def log_tail(client: BoundedClient, job_id: str) -> str:
 async def observe(client: BoundedClient, job_id: str, ctx: StepContext) -> ProbeResult:
     """Map a job's status onto a probe result, writing the log of a failed job into the run.
 
-    ``PENDING`` and ``STARTED`` are running, and so is any status Chap adds later: only the
-    statuses it documents as final end the step.
+    A status that is neither running nor final is refused, so a step never waits on a word it
+    cannot read.
     """
     job = await read_job(client, job_id)
     if job is None:
         return ProbeResult(status=ProbeStatus.GONE, message=JOB_UNKNOWN.render(job=job_id))
-    status = str(job.get("status") or "")
+    status = str(job["status"])
+    if status in RUNNING:
+        return ProbeResult(status=ProbeStatus.RUNNING, message=JOB_RUNNING.render(job=job_id, status=status))
     if status == SUCCESS:
         return ProbeResult(status=ProbeStatus.SUCCEEDED, message=JOB_RUNNING.render(job=job_id, status=status))
     if status in FAILED:
@@ -91,7 +120,7 @@ async def observe(client: BoundedClient, job_id: str, ctx: StepContext) -> Probe
         if tail:
             ctx.log.warning("the Chap job's log ends", job=job_id, log=tail)
         return ProbeResult(status=ProbeStatus.FAILED, message=JOB_FAILED.render(job=job_id, status=status, error=error))
-    return ProbeResult(status=ProbeStatus.RUNNING, message=JOB_RUNNING.render(job=job_id, status=status or "unknown"))
+    raise BlockFailure(JOB_UNRECOGNISED, error_class=ErrorClass.REJECTED, job=job_id, status=status)
 
 
 async def result_of(client: BoundedClient, job_id: str, helper: str) -> JsonValue:

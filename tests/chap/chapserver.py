@@ -16,12 +16,25 @@ CONNECTION: Final = "chap-test"
 #: Where the scripted server answers.
 BASE_URL: Final = "http://chap.test"
 
+#: A released Chap, up to v2.5.1 at least: ``GET /v1/jobs/{id}`` answers with the bare status.
+RELEASED: Final = "released"
+
+#: Chap's master since ef17a258: ``GET /v1/jobs/{id}`` answers with the whole job.
+MASTER: Final = "master"
+
+#: Both, for a test of a job-backed block to run against each with ``indirect=True``.
+RELEASES: Final = (RELEASED, MASTER)
+
 
 class ChapServer:
-    """Answers each route from a queue the test fills; the last answer repeats."""
+    """Answers each route from a queue the test fills; the last answer repeats.
 
-    def __init__(self) -> None:
+    ``release`` is the Chap whose job shape :meth:`job` answers in.
+    """
+
+    def __init__(self, release: str = MASTER) -> None:
         """Start with no routes and no requests."""
+        self.release = release
         self.routes: dict[tuple[str, str], list[httpx2.Response]] = {}
         self.requests: list[httpx2.Request] = []
 
@@ -43,6 +56,11 @@ class ChapServer:
         self.routes.setdefault((method, path), []).append(response)
         return self
 
+    def job(self, job_id: str, status: str, **fields: Any) -> "ChapServer":
+        """Queue one answer of ``GET /v1/jobs/{id}`` in this release's shape; a released Chap drops ``fields``."""
+        body = status if self.release == RELEASED else job(job_id, status, **fields)
+        return self.on("GET", f"/v1/jobs/{job_id}", body=body)
+
     def __call__(self, request: httpx2.Request) -> httpx2.Response:
         """Answer a request from its route's queue, or 404 when no route was written."""
         self.requests.append(request)
@@ -61,7 +79,7 @@ class ChapServer:
 
 
 def job(job_id: str, status: str, **fields: Any) -> dict[str, Any]:
-    """A job description in the shape ``GET /v1/jobs/{id}`` answers with."""
+    """A job description in the shape Chap's master answers ``GET /v1/jobs/{id}`` with."""
     return {
         "id": job_id,
         "type": "create_dataset",
