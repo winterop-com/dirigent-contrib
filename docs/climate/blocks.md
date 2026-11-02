@@ -138,7 +138,7 @@ run's storage; the `href` is read under the connection's `base_url`, so an insta
 under a path prefix such as `/ocs` is reached there. An `href` that resolves anywhere else fails
 the step as `climate.job.asset_outside` before any request is sent for it: another scheme, host or
 port, a user in the URL, a path outside the prefix, or a parent segment in any encoding. The
-connection's headers therefore stay on its own `base_url`. The output is the same as
+connection's headers and credential therefore stay on its own `base_url`. The output is the same as
 `climate.aggregate`'s: always a `uri`, and the payload in `value` or `text` when it is small. A
 DHIS2 dataValueSet from `aggregate_to_dhis2_json` feeds `dhis2.data_value_set_import`
 directly, through `storage.read` when it is larger than the inline limit.
@@ -306,6 +306,8 @@ Each refusal is minted in the pack's catalogue under the `climate` prefix, so a 
 | `climate.answered` | `{where} answered {status}: {remote}` |
 | `climate.not_json` | `{where} answered with a body that is not JSON` |
 | `climate.connection.bad_header` | `a header's name must be an HTTP token and its value visible ASCII with no leading or trailing whitespace, or it cannot be sent` |
+| `climate.connection.bad_credential` | `a credential must be visible ASCII with no whitespace, or it cannot be sent as a header value; a scheme such as Bearer goes in credential_scheme` |
+| `climate.connection.credential_header_refused` | `the {header} header carries a credential, and headers are stored as written; put its value in credential, which is sealed, with its name in credential_header unless that is Authorization` |
 | `climate.response_too_large` | `{where} answered with more than max_response ({limit} bytes) and the rest was not read; raise max_response if the answer is expected` |
 | `climate.past_deadline` | `{where} took longer than the {seconds} seconds it is allowed` |
 | `climate.connection.unreachable` | `the open climate service did not answer: {detail}` |

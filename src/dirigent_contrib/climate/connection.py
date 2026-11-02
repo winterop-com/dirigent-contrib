@@ -2,17 +2,19 @@
 
 import re
 from datetime import timedelta
-from typing import ClassVar, Final, cast
+from typing import ClassVar, Final, Self, cast
 
 import httpx2
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
-from dirigent_common import BlockModel, Duration, HealthReport, Size
+from dirigent_common import BlockModel, Duration, HealthReport, Size, scrub, secrets_of
 from dirigent_contrib.climate.messages import (
+    BAD_CREDENTIAL,
     BAD_HEADER,
     CONNECTION_READ_ONLY,
     CONNECTION_UNHEALTHY,
     CONNECTION_UNREACHABLE,
+    CREDENTIAL_HEADER_REFUSED,
     PAST_DEADLINE,
     RESPONSE_TOO_LARGE,
 )
@@ -35,6 +37,38 @@ HEADER_NAME: Final = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 #: What a header's value may hold: visible ASCII, with spaces only between its words.
 HEADER_VALUE: Final = re.compile(r"(?:[\x21-\x7e]+(?: +[\x21-\x7e]+)*)?")
 
+#: What a credential may hold: visible ASCII with no whitespace, the only text a header value carries unchanged.
+CREDENTIAL: Final = re.compile(r"[\x21-\x7e]+")
+
+#: A word that makes a header's name, read without its separators, the name of a credential.
+CREDENTIAL_WORDS: Final = (
+    "accesskey",
+    "apikey",
+    "authorization",
+    "bearer",
+    "cookie",
+    "credential",
+    "passwd",
+    "password",
+    "privatekey",
+    "secret",
+    "token",
+)
+
+#: A whole segment of a header's name that does the same.
+CREDENTIAL_SEGMENTS: Final = frozenset({"auth", "session"})
+
+#: The segment before a final `key` that says the key addresses something rather than unlocks it.
+ADDRESSING_KEYS: Final = frozenset({"cache", "dedup", "deduplication", "idempotency", "partition", "routing", "sort"})
+
+
+def carries_credential(name: str) -> bool:
+    """Whether a header's name, in any case and with a hyphen or an underscore, is that of a credential."""
+    segments = re.split(r"[-_]", name.lower())
+    if any(word in "".join(segments) for word in CREDENTIAL_WORDS) or CREDENTIAL_SEGMENTS.intersection(segments):
+        return True
+    return segments[-1] == "key" and (len(segments) == 1 or segments[-2] not in ADDRESSING_KEYS)
+
 
 class ClimateConnectionConfig(BlockModel):
     """Everything needed to talk to one instance of the open climate service."""
@@ -46,7 +80,16 @@ class ClimateConnectionConfig(BlockModel):
 
     headers: dict[str, str] = Field(default_factory=dict[str, str])
     """Extra headers sent on every request, for an instance behind a proxy that wants them. They are
-    stored as written, not as secrets."""
+    stored as written, so one whose name carries a credential is refused."""
+
+    credential: SecretStr | None = None
+    """A credential a proxy in front of the instance wants on every request: visible ASCII with no whitespace."""
+
+    credential_header: str = "Authorization"
+    """The header `credential` is sent in."""
+
+    credential_scheme: str | None = None
+    """The word sent before `credential` in its header, such as `Bearer`; unset sends the credential alone."""
 
     verify_tls: bool = True
     """Whether certificates are verified; turning this off is a per-connection decision."""
@@ -68,7 +111,35 @@ class ClimateConnectionConfig(BlockModel):
         for name, value in headers.items():
             if HEADER_NAME.fullmatch(name) is None or HEADER_VALUE.fullmatch(value) is None:
                 raise ValueError(BAD_HEADER.render())
+            if carries_credential(name):
+                raise ValueError(CREDENTIAL_HEADER_REFUSED.render(header=name))
         return headers
+
+    @field_validator("credential")
+    @classmethod
+    def _credential_fits_a_header(cls, credential: SecretStr | None) -> SecretStr | None:
+        """Read an empty credential as unset, and reject one that cannot be sent without saying what it held."""
+        if credential is None or not credential.get_secret_value():
+            return None
+        if CREDENTIAL.fullmatch(credential.get_secret_value()) is None:
+            raise ValueError(BAD_CREDENTIAL.render())
+        return credential
+
+    @field_validator("credential_header", "credential_scheme")
+    @classmethod
+    def _word_can_be_sent(cls, word: str | None) -> str | None:
+        """Reject a header name or a scheme that is not an HTTP token."""
+        if word is not None and HEADER_NAME.fullmatch(word) is None:
+            raise ValueError(BAD_HEADER.render())
+        return word
+
+    @model_validator(mode="after")
+    def _credential_header_is_the_credentials_own(self) -> Self:
+        """Refuse a plain header spelling the name the credential is sent in."""
+        for name in self.headers:
+            if name.lower() == self.credential_header.lower():
+                raise ValueError(CREDENTIAL_HEADER_REFUSED.render(header=name))
+        return self
 
 
 def settings_of(config: BaseModel) -> ClimateConnectionConfig:
@@ -78,17 +149,26 @@ def settings_of(config: BaseModel) -> ClimateConnectionConfig:
     return ClimateConnectionConfig.model_validate(config.model_dump())
 
 
+def authorize(client: httpx2.AsyncClient, config: ClimateConnectionConfig) -> httpx2.AsyncClient:
+    """Put the connection's headers and its credential on a client."""
+    client.headers.update(config.headers)
+    if config.credential is not None:
+        scheme = f"{config.credential_scheme} " if config.credential_scheme else ""
+        client.headers[config.credential_header] = f"{scheme}{config.credential.get_secret_value()}"
+    return client
+
+
 def build_client(
     config: ClimateConnectionConfig, transport: httpx2.AsyncBaseTransport | None = None
 ) -> httpx2.AsyncClient:
-    """Build a client bound to the connection's URL, headers, TLS setting and timeout."""
-    return httpx2.AsyncClient(
+    """Build a client bound to the connection's URL, headers, credential, TLS setting and timeout."""
+    client = httpx2.AsyncClient(
         base_url=config.base_url,
-        headers=config.headers,
         verify=config.verify_tls,
         timeout=config.timeout.total_seconds(),
         transport=transport,
     )
+    return authorize(client, config)
 
 
 def bounded(client: httpx2.AsyncClient, config: ClimateConnectionConfig) -> BoundedClient:
@@ -107,9 +187,7 @@ def bounded(client: httpx2.AsyncClient, config: ClimateConnectionConfig) -> Boun
 def client_for(ctx: StepContext, ref: ConnectionRef) -> BoundedClient:
     """The client one block call uses: the one the engine builds for the connection, with its headers on."""
     config = ctx.connection(ref, ClimateConnectionConfig)
-    client = ctx.http(ref)
-    client.headers.update(config.headers)
-    return bounded(client, config)
+    return bounded(authorize(ctx.http(ref), config), config)
 
 
 #: A sun half behind a cloud, on the 24-unit grid.
@@ -136,25 +214,28 @@ class ClimateConnectionKind(ConnectionKind):
     async def check(self, config: BaseModel) -> HealthReport:
         """Ask the service how it is and what it is, never raising.
 
-        A read-only instance is healthy, and the report says that it refuses every write.
+        A read-only instance is healthy, and the report says that it refuses every write. A credential
+        the service or a proxy quotes back does not reach the report.
         """
+        held: set[str] = set()
         try:
             settings = settings_of(config)
+            held = secrets_of(settings)
             async with bounded(build_client(settings, self._transport), settings) as client:
                 health = await client.request("GET", HEALTH_PATH)
                 if health.is_error:
                     detail = f"GET {HEALTH_PATH} answered {health.status_code}: {remote_words(health)}"
-                    return HealthReport(healthy=False, detail=CONNECTION_UNREACHABLE.render(detail=detail))
+                    return HealthReport(healthy=False, detail=CONNECTION_UNREACHABLE.render(detail=scrub(detail, held)))
                 status = str(_object(health).get("status") or "")
                 info = await client.request("GET", INFO_PATH)
                 about = _object(info) if not info.is_error else {}
         except Exception as error:  # noqa: BLE001 - a health check reports its verdict, it never raises
-            detail = str(error) or type(error).__name__
+            detail = scrub(str(error), held) or type(error).__name__
             return HealthReport(healthy=False, detail=CONNECTION_UNREACHABLE.render(detail=detail))
-        version = str(about["app_version"]) if about.get("app_version") else None
+        version = scrub(str(about["app_version"]), held) if about.get("app_version") else None
         details: list[str] = []
         if status != HEALTHY:
-            details.append(CONNECTION_UNHEALTHY.render(status=status or "without a status"))
+            details.append(CONNECTION_UNHEALTHY.render(status=scrub(status, held) or "without a status"))
         if about.get("read_only") is True:
             details.append(CONNECTION_READ_ONLY.render())
         return HealthReport(
