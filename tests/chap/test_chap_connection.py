@@ -138,8 +138,7 @@ def test_a_token_of_visible_ascii_is_sent_as_written(token: str) -> None:
     "url",
     ["https://user:DUMMYSECRET@chap.test", "https://chap.test/?token=DUMMYSECRET"],
 )
-def test_a_base_url_holding_more_than_where_is_refused_without_repeating_it(url: str) -> None:
+def test_a_base_url_carrying_a_credential_is_refused_without_repeating_it(url: str) -> None:
     with pytest.raises(ValidationError) as refused:
         ChapConnectionConfig(base_url=url)
-    assert "base_url says where the server is" in str(refused.value)
     assert "DUMMYSECRET" not in str(refused.value)

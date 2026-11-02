@@ -13,12 +13,6 @@ BAD_API_TOKEN = CHAP.define(
     "an api_token must be visible ASCII with no whitespace, or it cannot be sent as a header value",
 )
 
-BAD_BASE_URL = CHAP.define(
-    "connection.base_url_holds_more",
-    "base_url says where the server is and nothing else: a user, a password, a query or a fragment in it is "
-    "refused, because it is stored as written",
-)
-
 RESPONSE_TOO_LARGE = CHAP.define(
     "response_too_large",
     "{where} answered with more than max_response ({limit} bytes) and the rest was not read; "

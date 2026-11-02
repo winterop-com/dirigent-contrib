@@ -377,7 +377,6 @@ Each refusal is minted in the pack's catalogue under the `chap` prefix, so a rea
 
 | Code | Template |
 | --- | --- |
-| `chap.connection.base_url_holds_more` | `base_url says where the server is and nothing else: a user, a password, a query or a fragment in it is refused, because it is stored as written` |
 | `chap.answered` | `{where} answered {status}: {remote}` |
 | `chap.not_json` | `{where} answered with a body that is not JSON` |
 | `chap.connection.bad_api_token` | `an api_token must be visible ASCII with no whitespace, or it cannot be sent as a header value` |

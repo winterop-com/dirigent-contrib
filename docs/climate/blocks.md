@@ -306,10 +306,6 @@ Each refusal is minted in the pack's catalogue under the `climate` prefix, so a 
 | `climate.answered` | `{where} answered {status}: {remote}` |
 | `climate.not_json` | `{where} answered with a body that is not JSON` |
 | `climate.connection.bad_header` | `a header's name must be an HTTP token and its value visible ASCII with no leading or trailing whitespace, or it cannot be sent` |
-| `climate.connection.base_url_holds_more` | `base_url says where the service is and nothing else: a user, a password, a query or a fragment in it is refused, because it is stored as written` |
-| `climate.connection.credential_two_places` | `credential goes in one place: credential_query sends it as a query parameter, so credential_header and credential_scheme cannot be set beside it` |
-| `climate.connection.bad_credential` | `a credential must be visible ASCII with no whitespace, or it cannot be sent as a header value; a scheme such as Bearer goes in credential_scheme` |
-| `climate.connection.credential_header_refused` | `the {header} header carries a credential, and headers are stored as written; put its value in credential, which is sealed, with its name in credential_header unless that is Authorization` |
 | `climate.response_too_large` | `{where} answered with more than max_response ({limit} bytes) and the rest was not read; raise max_response if the answer is expected` |
 | `climate.past_deadline` | `{where} took longer than the {seconds} seconds it is allowed` |
 | `climate.connection.unreachable` | `the open climate service did not answer: {detail}` |

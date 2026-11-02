@@ -1,24 +1,36 @@
 """The ``climate`` connection kind: one instance of the open climate service, and the client for it."""
 
 import re
-from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import ClassVar, Final, Self, cast
-from urllib.parse import quote, quote_plus, urlsplit
 
 import httpx2
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from dirigent_common import BlockModel, Duration, HealthReport, Size, scrub, secrets_of
+from dirigent_common import (
+    DEFAULT_CREDENTIAL_HEADER,
+    BlockModel,
+    CredentialHeader,
+    CredentialParameterOnOrigin,
+    CredentialQuery,
+    CredentialScheme,
+    CredentialValue,
+    Duration,
+    HealthReport,
+    PlainHeaders,
+    PlainUrl,
+    Size,
+    credential_header_value,
+    refuse_credential_in_two_places,
+    scrub,
+    secrets_of,
+)
+from dirigent_common.credentials import CREDENTIAL_HEADER_REFUSED
 from dirigent_contrib.climate.messages import (
-    BAD_BASE_URL,
-    BAD_CREDENTIAL,
     BAD_HEADER,
     CONNECTION_READ_ONLY,
     CONNECTION_UNHEALTHY,
     CONNECTION_UNREACHABLE,
-    CREDENTIAL_HEADER_REFUSED,
-    CREDENTIAL_TWO_PLACES,
     PAST_DEADLINE,
     RESPONSE_TOO_LARGE,
 )
@@ -41,68 +53,30 @@ HEADER_NAME: Final = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 #: What a header's value may hold: visible ASCII, with spaces only between its words.
 HEADER_VALUE: Final = re.compile(r"(?:[\x21-\x7e]+(?: +[\x21-\x7e]+)*)?")
 
-#: What a query parameter a credential is sent as may be called.
-QUERY_NAME: Final = re.compile(r"[A-Za-z0-9_.~-]+")
-
-#: The header a credential is sent in when the connection names neither a header nor a query parameter.
-DEFAULT_CREDENTIAL_HEADER: Final = "Authorization"
-
-#: What a credential may hold: visible ASCII with no whitespace, the only text a header value carries unchanged.
-CREDENTIAL: Final = re.compile(r"[\x21-\x7e]+")
-
-#: A word that makes a header's name, read without its separators, the name of a credential.
-CREDENTIAL_WORDS: Final = (
-    "accesskey",
-    "apikey",
-    "authorization",
-    "bearer",
-    "cookie",
-    "credential",
-    "passwd",
-    "password",
-    "privatekey",
-    "secret",
-    "token",
-)
-
-#: A whole segment of a header's name that does the same.
-CREDENTIAL_SEGMENTS: Final = frozenset({"auth", "session"})
-
-#: The segment before a final `key` that says the key addresses something rather than unlocks it.
-ADDRESSING_KEYS: Final = frozenset({"cache", "dedup", "deduplication", "idempotency", "partition", "routing", "sort"})
-
-
-def carries_credential(name: str) -> bool:
-    """Whether a header's name, in any case and with a hyphen or an underscore, is that of a credential."""
-    segments = re.split(r"[-_]", name.lower())
-    if any(word in "".join(segments) for word in CREDENTIAL_WORDS) or CREDENTIAL_SEGMENTS.intersection(segments):
-        return True
-    return segments[-1] == "key" and (len(segments) == 1 or segments[-2] not in ADDRESSING_KEYS)
-
 
 class ClimateConnectionConfig(BlockModel):
     """Everything needed to talk to one instance of the open climate service."""
 
     model_config = ConfigDict(hide_input_in_errors=True)
 
-    base_url: str = Field(min_length=1)
+    base_url: PlainUrl = Field(min_length=1)
     """The service root every request path is resolved against, such as `https://climate-demo.dhis2.org/ocs`; a
-    user, a password, a query or a fragment in it is refused."""
+    user, a password or a credential in its query is refused."""
 
-    headers: dict[str, str] = Field(default_factory=dict[str, str])
+    headers: PlainHeaders = Field(default_factory=dict[str, str])
     """Extra headers sent on every request, for an instance behind a proxy that wants them. They are
     stored as written, so one whose name carries a credential is refused."""
 
-    credential: SecretStr | None = None
+    credential: CredentialValue = None
     """A credential a proxy in front of the instance wants on every request: visible ASCII with no whitespace."""
 
-    credential_header: str | None = None
+    credential_header: CredentialHeader = None
     """The header `credential` is sent in, `Authorization` when unset."""
 
-    credential_query: str | None = None
+    credential_query: CredentialQuery = None
     """The query parameter `credential` is sent as instead of a header, for a proxy that reads no other."""
 
-    credential_scheme: str | None = None
+    credential_scheme: CredentialScheme = None
     """The word sent before `credential` in its header, such as `Bearer`; unset sends the credential alone."""
 
     verify_tls: bool = True
@@ -118,15 +92,6 @@ class ClimateConnectionConfig(BlockModel):
     """The most one response through this connection may decode to, unless a block says otherwise; a larger one is
     refused."""
 
-    @field_validator("base_url")
-    @classmethod
-    def _base_url_holds_only_where(cls, url: str) -> str:
-        """Refuse a user, a password, a query or a fragment, none of which a root needs."""
-        split = urlsplit(url)
-        if "@" in split.netloc or split.query or split.fragment:
-            raise ValueError(BAD_BASE_URL.render())
-        return url
-
     @field_validator("headers")
     @classmethod
     def _headers_can_be_sent(cls, headers: dict[str, str]) -> dict[str, str]:
@@ -134,41 +99,12 @@ class ClimateConnectionConfig(BlockModel):
         for name, value in headers.items():
             if HEADER_NAME.fullmatch(name) is None or HEADER_VALUE.fullmatch(value) is None:
                 raise ValueError(BAD_HEADER.render())
-            if carries_credential(name):
-                raise ValueError(CREDENTIAL_HEADER_REFUSED.render(header=name))
         return headers
-
-    @field_validator("credential")
-    @classmethod
-    def _credential_fits_a_header(cls, credential: SecretStr | None) -> SecretStr | None:
-        """Read an empty credential as unset, and reject one that cannot be sent without saying what it held."""
-        if credential is None or not credential.get_secret_value():
-            return None
-        if CREDENTIAL.fullmatch(credential.get_secret_value()) is None:
-            raise ValueError(BAD_CREDENTIAL.render())
-        return credential
-
-    @field_validator("credential_header", "credential_scheme")
-    @classmethod
-    def _word_can_be_sent(cls, word: str | None) -> str | None:
-        """Reject a header name or a scheme that is not an HTTP token."""
-        if word is not None and HEADER_NAME.fullmatch(word) is None:
-            raise ValueError(BAD_HEADER.render())
-        return word
-
-    @field_validator("credential_query")
-    @classmethod
-    def _query_name_can_be_sent(cls, name: str | None) -> str | None:
-        """Reject a name a query parameter cannot be sent under unchanged."""
-        if name is not None and QUERY_NAME.fullmatch(name) is None:
-            raise ValueError(BAD_HEADER.render())
-        return name
 
     @model_validator(mode="after")
     def _credential_goes_in_one_place(self) -> Self:
         """Refuse a credential told to go in two places, and a plain header spelling the name it is sent in."""
-        if self.credential_query is not None and (self.credential_header or self.credential_scheme):
-            raise ValueError(CREDENTIAL_TWO_PLACES.render())
+        refuse_credential_in_two_places(self.credential_header, self.credential_query, self.credential_scheme)
         for name in self.headers:
             if name.lower() == (self.credential_header or DEFAULT_CREDENTIAL_HEADER).lower():
                 raise ValueError(CREDENTIAL_HEADER_REFUSED.render(header=name))
@@ -190,37 +126,17 @@ def authorize(client: httpx2.AsyncClient, config: ClimateConnectionConfig) -> ht
     secret = config.credential.get_secret_value()
     if config.credential_query is not None:
         client.event_hooks = {
-            "request": [*client.event_hooks["request"], _parameter_on_origin(config, config.credential_query, secret)],
+            "request": [
+                *client.event_hooks["request"],
+                CredentialParameterOnOrigin(config.base_url, config.credential_query, secret),
+            ],
             "response": client.event_hooks["response"],
         }
         return client
-    scheme = f"{config.credential_scheme} " if config.credential_scheme else ""
-    client.headers[config.credential_header or DEFAULT_CREDENTIAL_HEADER] = f"{scheme}{secret}"
+    client.headers[config.credential_header or DEFAULT_CREDENTIAL_HEADER] = credential_header_value(
+        secret, config.credential_scheme
+    )
     return client
-
-
-def _parameter_on_origin(
-    config: ClimateConnectionConfig, name: str, value: str
-) -> Callable[[httpx2.Request], Awaitable[None]]:
-    """A request hook setting a query parameter on the connection's origin and taking it off anywhere else."""
-    base = httpx2.URL(config.base_url)
-
-    async def hook(request: httpx2.Request) -> None:
-        if (request.url.scheme, request.url.host, request.url.port) == (base.scheme, base.host, base.port):
-            request.url = request.url.copy_set_param(name, value)
-        else:
-            request.url = request.url.copy_remove_param(name)
-
-    return hook
-
-
-def _held(settings: ClimateConnectionConfig) -> set[str]:
-    """Every spelling of the credential a report may quote, a URL's among them."""
-    held = secrets_of(settings)
-    if settings.credential is not None:
-        secret = settings.credential.get_secret_value()
-        held |= {quote(secret, safe=""), quote(secret), quote_plus(secret)}
-    return held
 
 
 def build_client(
@@ -285,7 +201,7 @@ class ClimateConnectionKind(ConnectionKind):
         held: set[str] = set()
         try:
             settings = settings_of(config)
-            held = _held(settings)
+            held = secrets_of(settings)
             async with bounded(build_client(settings, self._transport), settings) as client:
                 health = await client.request("GET", HEALTH_PATH)
                 if health.is_error:

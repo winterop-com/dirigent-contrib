@@ -127,7 +127,7 @@ def test_a_header_that_can_be_sent_is_kept_as_written(value: str) -> None:
 def test_a_header_named_for_a_credential_is_refused_and_says_where_it_goes(name: str) -> None:
     with pytest.raises(ValidationError) as refused:
         ClimateConnectionConfig.model_validate({"base_url": BASE_URL, "headers": {name: DUMMY}})
-    assert "put its value in credential" in str(refused.value)
+    assert "credential field" in str(refused.value)
     assert name in str(refused.value)
     assert DUMMY not in str(refused.value)
     assert DUMMY not in repr(refused.value)
@@ -143,7 +143,7 @@ def test_a_header_that_names_no_credential_is_kept(name: str) -> None:
 
 
 def test_a_plain_header_cannot_spell_the_name_the_credential_is_sent_in() -> None:
-    with pytest.raises(ValidationError, match="put its value in credential"):
+    with pytest.raises(ValidationError, match="credential field"):
         ClimateConnectionConfig.model_validate(
             {"base_url": BASE_URL, "headers": {"x-tenant": "v"}, "credential_header": "X-Tenant"}
         )
@@ -216,13 +216,11 @@ async def test_a_credential_a_transport_error_quotes_does_not_reach_the_health_r
         f"https://user:{DUMMY}@service.test/ocs",
         f"https://{DUMMY}@service.test/ocs",
         f"https://service.test/ocs?api_key={DUMMY}",
-        f"https://service.test/ocs#{DUMMY}",
     ],
 )
-def test_a_base_url_holding_more_than_where_is_refused_without_repeating_it(url: str) -> None:
+def test_a_base_url_carrying_a_credential_is_refused_without_repeating_it(url: str) -> None:
     with pytest.raises(ValidationError) as refused:
         ClimateConnectionConfig(base_url=url)
-    assert "base_url says where the service is" in str(refused.value)
     assert DUMMY not in str(refused.value)
 
 
