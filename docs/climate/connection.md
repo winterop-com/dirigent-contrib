@@ -9,7 +9,7 @@ The service has no authentication of its own; a credential is for a proxy in fro
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `base_url` | `string` | yes |  | The service root every request path is resolved against, such as `https://climate-demo.dhis2.org/ocs`; a user, a password, a query or a fragment in it is refused. |
+| `base_url` | `string` | yes |  | The service root every request path is resolved against, such as `https://climate-demo.dhis2.org/ocs`; a user, a password or a credential in its query is refused. |
 | `headers` | `object of string` |  |  | Extra headers sent on every request, for an instance behind a proxy that wants them. They are stored as written, so one whose name carries a credential is refused. |
 | `credential` | `string (password) or null` |  | `null` | A credential a proxy in front of the instance wants on every request: visible ASCII with no whitespace. |
 | `credential_header` | `string or null` |  | `null` | The header `credential` is sent in, `Authorization` when unset. |
@@ -52,8 +52,8 @@ dg connection create climate behind-a-parameter \
   --set credential=... --set credential_query=api_key
 ```
 
-`base_url` says where the service is and nothing else: a user, a password, a query or a fragment in
-it is refused, and a credential goes in `credential`.
+A user, a password or a credential in the query of `base_url` is refused, and a credential goes in
+`credential`.
 
 The client follows no redirect and `climate.job.result` reads an asset only under `base_url`, so
 the credential goes nowhere but the connection's own origin.

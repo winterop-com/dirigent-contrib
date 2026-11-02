@@ -14,30 +14,6 @@ BAD_HEADER = CLIMATE.define(
     "or it cannot be sent",
 )
 
-BAD_BASE_URL = CLIMATE.define(
-    "connection.base_url_holds_more",
-    "base_url says where the service is and nothing else: a user, a password, a query or a fragment in it is "
-    "refused, because it is stored as written",
-)
-
-CREDENTIAL_TWO_PLACES = CLIMATE.define(
-    "connection.credential_two_places",
-    "credential goes in one place: credential_query sends it as a query parameter, so credential_header and "
-    "credential_scheme cannot be set beside it",
-)
-
-BAD_CREDENTIAL = CLIMATE.define(
-    "connection.bad_credential",
-    "a credential must be visible ASCII with no whitespace, or it cannot be sent as a header value; "
-    "a scheme such as Bearer goes in credential_scheme",
-)
-
-CREDENTIAL_HEADER_REFUSED = CLIMATE.define(
-    "connection.credential_header_refused",
-    "the {header} header carries a credential, and headers are stored as written; put its value in credential, "
-    "which is sealed, with its name in credential_header unless that is Authorization",
-)
-
 RESPONSE_TOO_LARGE = CLIMATE.define(
     "response_too_large",
     "{where} answered with more than max_response ({limit} bytes) and the rest was not read; "
