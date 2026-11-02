@@ -132,3 +132,14 @@ def test_an_empty_token_is_read_as_unset() -> None:
 def test_a_token_of_visible_ascii_is_sent_as_written(token: str) -> None:
     config = ChapConnectionConfig.model_validate({"base_url": BASE_URL, "api_token": token})
     assert build_client(config).headers["authorization"] == f"Bearer {token}"
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://user:DUMMYSECRET@chap.test", "https://chap.test/?token=DUMMYSECRET"],
+)
+def test_a_base_url_holding_more_than_where_is_refused_without_repeating_it(url: str) -> None:
+    with pytest.raises(ValidationError) as refused:
+        ChapConnectionConfig(base_url=url)
+    assert "base_url says where the server is" in str(refused.value)
+    assert "DUMMYSECRET" not in str(refused.value)

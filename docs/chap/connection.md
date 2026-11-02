@@ -9,7 +9,7 @@ never from a step.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `base_url` | `string` | yes |  | The server root every request path is resolved against, such as `http://localhost:8000`. |
+| `base_url` | `string` | yes |  | The server root every request path is resolved against, such as `http://localhost:8000`; a user, a password, a query or a fragment in it is refused. |
 | `api_token` | `string (password) or null` |  | `null` | The server's API token, sent as `Authorization: Bearer`: visible ASCII with no whitespace. Leave it unset for a server without auth. |
 | `verify_tls` | `boolean` |  | `true` | Whether certificates are verified; turning this off is a per-connection decision. |
 | `timeout` | `string (humane-duration)` |  | `"30s"` | The timeout applied to each read of every request through this connection. |
