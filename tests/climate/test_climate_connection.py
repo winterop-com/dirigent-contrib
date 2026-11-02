@@ -208,3 +208,68 @@ async def test_a_credential_a_transport_error_quotes_does_not_reach_the_health_r
     report = await ClimateConnectionKind(transport=httpx2.MockTransport(refuse)).check(config)
     assert report.healthy is False
     assert report.detail is not None and DUMMY not in report.detail
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://user:{DUMMY}@service.test/ocs",
+        f"https://{DUMMY}@service.test/ocs",
+        f"https://service.test/ocs?api_key={DUMMY}",
+        f"https://service.test/ocs#{DUMMY}",
+    ],
+)
+def test_a_base_url_holding_more_than_where_is_refused_without_repeating_it(url: str) -> None:
+    with pytest.raises(ValidationError) as refused:
+        ClimateConnectionConfig(base_url=url)
+    assert "base_url says where the service is" in str(refused.value)
+    assert DUMMY not in str(refused.value)
+
+
+async def test_the_credential_is_sent_as_the_query_parameter_the_connection_names(
+    ocs: ClimateServer, ctx: FakeContext
+) -> None:
+    config = ClimateConnectionConfig(base_url=BASE_URL, credential=SecretStr(DUMMY), credential_query="api_key")
+    ocs.on("GET", "/health", body={"status": "healthy"})
+    ocs.on("GET", "/info", body=INFO)
+    await _kind(ocs).check(config)
+    assert [request.url.params["api_key"] for request in ocs.requests] == [DUMMY, DUMMY]
+    assert all("authorization" not in request.headers for request in ocs.requests)
+    ctx.connections[CONNECTION] = config
+    async with client_for(ctx.as_context(), CONNECTION) as client:
+        assert "authorization" not in client.headers
+
+
+async def test_a_query_parameter_stays_on_the_origin_and_keeps_what_a_path_wrote() -> None:
+    seen: list[httpx2.Request] = []
+
+    def answer(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200)
+
+    config = ClimateConnectionConfig(base_url=BASE_URL, credential=SecretStr(DUMMY), credential_query="api_key")
+    async with build_client(config, httpx2.MockTransport(answer)) as client:
+        await client.get("/x?keep=1")
+        await client.get("https://elsewhere.test/x?api_key=stale")
+    assert seen[0].url.params["api_key"] == DUMMY and seen[0].url.params["keep"] == "1"
+    assert "api_key" not in seen[1].url.params
+
+
+def test_a_credential_cannot_go_in_a_query_parameter_and_a_header() -> None:
+    for beside in ({"credential_header": "X-Key"}, {"credential_scheme": "Token"}):
+        with pytest.raises(ValidationError, match="credential goes in one place"):
+            ClimateConnectionConfig.model_validate(
+                {"base_url": BASE_URL, "credential": DUMMY, "credential_query": "api_key", **beside}
+            )
+
+
+def test_a_connection_read_back_through_its_dump_still_validates() -> None:
+    config = ClimateConnectionConfig(base_url=BASE_URL, credential=SecretStr(DUMMY), credential_query="api_key")
+    assert ClimateConnectionConfig.model_validate(config.model_dump()).credential_query == "api_key"
+
+
+async def test_a_query_credential_a_service_quotes_encoded_does_not_reach_the_health_report(ocs: ClimateServer) -> None:
+    ocs.on("GET", "/health", status=401, text="refused /health?api_key=a%2Bb%2Fc")
+    config = ClimateConnectionConfig(base_url=BASE_URL, credential=SecretStr("a+b/c"), credential_query="api_key")
+    report = await _kind(ocs).check(config)
+    assert report.detail is not None and "api_key=***" in report.detail

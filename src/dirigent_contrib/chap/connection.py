@@ -3,6 +3,7 @@
 import re
 from datetime import timedelta
 from typing import ClassVar, Final, cast
+from urllib.parse import urlsplit
 
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
@@ -10,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from dirigent_common import BlockModel, Duration, HealthReport, Size
 from dirigent_contrib.chap.messages import (
     BAD_API_TOKEN,
+    BAD_BASE_URL,
     CONNECTION_AUTH_REQUIRED,
     CONNECTION_TOKEN_REFUSED,
     CONNECTION_UNREACHABLE,
@@ -39,7 +41,8 @@ class ChapConnectionConfig(BlockModel):
     model_config = ConfigDict(hide_input_in_errors=True)
 
     base_url: str = Field(min_length=1)
-    """The server root every request path is resolved against, such as `http://localhost:8000`."""
+    """The server root every request path is resolved against, such as `http://localhost:8000`; a user, a password,
+    a query or a fragment in it is refused."""
 
     api_token: SecretStr | None = None
     """The server's API token, sent as `Authorization: Bearer`: visible ASCII with no whitespace. Leave it unset for
@@ -56,6 +59,15 @@ class ChapConnectionConfig(BlockModel):
 
     max_response: Size = Field(default=64 * 1024 * 1024, ge=1)
     """The most one response through this connection may decode to; a larger one is refused."""
+
+    @field_validator("base_url")
+    @classmethod
+    def _base_url_holds_only_where(cls, url: str) -> str:
+        """Refuse a user, a password, a query or a fragment, none of which a root needs."""
+        split = urlsplit(url)
+        if "@" in split.netloc or split.query or split.fragment:
+            raise ValueError(BAD_BASE_URL.render())
+        return url
 
     @field_validator("api_token")
     @classmethod
