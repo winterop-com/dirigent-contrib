@@ -15,6 +15,6 @@ def ocs() -> ClimateServer:
 @pytest.fixture
 def ctx(block_ctx: FakeContext, ocs: ClimateServer) -> FakeContext:
     """A context whose climate connection carries a proxy header, and whose HTTP is the scripted service."""
-    block_ctx.connections[CONNECTION] = ClimateConnectionConfig(base_url=BASE_URL, headers={"X-Proxy-Key": "k"})
+    block_ctx.connections[CONNECTION] = ClimateConnectionConfig(base_url=BASE_URL, headers={"X-Proxy-Route": "k"})
     block_ctx.handler = ocs
     return block_ctx

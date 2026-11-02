@@ -43,7 +43,7 @@ async def test_the_datasets_are_listed_as_json(ctx: FakeContext, ocs: ClimateSer
     sent = ocs.sent("GET", "/datasets")[0]
     assert sent.url.params["f"] == "json"
     assert sent.headers["accept"] == "application/json"
-    assert sent.headers["x-proxy-key"] == "k"
+    assert sent.headers["x-proxy-route"] == "k"
 
 
 async def test_a_workflow_runs_as_one_node_and_a_small_answer_is_inlined(ctx: FakeContext, ocs: ClimateServer) -> None:

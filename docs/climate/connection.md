@@ -2,25 +2,48 @@
 
 One `climate` connection is one instance of the open climate service. Every block in this pack
 takes a `connection` field naming one by its `code`, and builds its client from it: the URL, the
-extra headers, the TLS setting and the timeout all come from the connection, never from a step.
-The service has no authentication of its own.
+extra headers, the credential, the TLS setting and the timeout all come from the connection, never from a step.
+The service has no authentication of its own; a credential is for a proxy in front of it.
 
 ## Settings
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `base_url` | `string` | yes |  | The service root every request path is resolved against, such as `https://climate-demo.dhis2.org/ocs`. |
-| `headers` | `object of string` |  |  | Extra headers sent on every request, for an instance behind a proxy that wants them. They are stored as written, not as secrets. |
+| `headers` | `object of string` |  |  | Extra headers sent on every request, for an instance behind a proxy that wants them. They are stored as written, so one whose name carries a credential is refused. |
+| `credential` | `string (password) or null` |  | `null` | A credential a proxy in front of the instance wants on every request: visible ASCII with no whitespace. |
+| `credential_header` | `string` |  | `"Authorization"` | The header `credential` is sent in. |
+| `credential_scheme` | `string or null` |  | `null` | The word sent before `credential` in its header, such as `Bearer`; unset sends the credential alone. |
 | `verify_tls` | `boolean` |  | `true` | Whether certificates are verified; turning this off is a per-connection decision. |
 | `timeout` | `string (humane-duration)` |  | `"30s"` | The timeout applied to each read of every request through this connection, unless a block says otherwise. |
 | `request_deadline` | `string (humane-duration)` |  | `"10m"` | The longest one request through this connection may take, start to last byte, unless a block says otherwise. |
 | `max_response` | `string (size) or integer` |  | `"64MB"` | The most one response through this connection may decode to, unless a block says otherwise; a larger one is refused. |
 
-`headers` is for an instance behind a proxy that wants a header of its own on every request.
-They are stored as written rather than encrypted, so a credential the proxy wants is better
-kept in the proxy than here. A header that cannot be sent, such as a value with the trailing newline
-a pasted or file-read value brings with it, is refused when the connection is created or updated,
-and the refusal does not repeat it.
+`headers` is for an instance behind a proxy that wants a header of its own on every request, such
+as a route or a tenant. They are stored as written and shown in every response, so a header whose
+name carries a credential is refused when the connection is created or updated: `Authorization`,
+`Proxy-Authorization`, `Cookie`, `X-Api-Key`, any name holding `token`, `secret` or `password`, a
+name ending in `key` other than one such as `X-Routing-Key` or `Idempotency-Key`, in any case and
+with a hyphen or an underscore. A header that cannot be sent, such as a value with the trailing
+newline a pasted or file-read value brings with it, is refused the same way, and neither refusal
+repeats the value.
+
+`credential` is where a credential goes. It is sealed at rest, redacted in every response, and
+scrubbed from a failure or a health report that quotes it. It is sent in `credential_header`, after
+`credential_scheme` when one is set:
+
+```bash
+dg connection create climate behind-a-proxy \
+  --set base_url=https://climate.example.org/ocs \
+  --set credential=... --set credential_scheme=Bearer
+
+dg connection create climate behind-a-key \
+  --set base_url=https://climate.example.org/ocs \
+  --set credential=... --set credential_header=X-Proxy-Key
+```
+
+The client follows no redirect and `climate.job.result` reads an asset only under `base_url`, so
+the credential goes nowhere but the connection's own origin.
 
 A block that waits on the service longer than the connection's `timeout` says so itself:
 `climate.aggregate` takes a `timeout` of its own, 5m by default, because an aggregation over a

@@ -8,6 +8,7 @@ from typing import Any
 import httpx2
 import pytest
 import pytest_asyncio
+from pydantic import SecretStr
 
 from dirigent_contrib.climate.batch import ClimateJobResultOperator, ClimateJobResultOutput
 from dirigent_contrib.climate.connection import ClimateConnectionConfig, build_client
@@ -72,7 +73,9 @@ def _serve(ctx: FakeContext, monkeypatch: pytest.MonkeyPatch, href: str) -> list
     def http(ref: str) -> httpx2.AsyncClient:
         return httpx2.AsyncClient(base_url=BASE_URL, transport=httpx2.MockTransport(answer))
 
-    ctx.connections[CONNECTION] = ClimateConnectionConfig(base_url=BASE_URL, headers={"X-Proxy-Key": "dummy"})
+    ctx.connections[CONNECTION] = ClimateConnectionConfig(
+        base_url=BASE_URL, credential=SecretStr("dummy"), credential_header="X-Proxy-Key"
+    )
     monkeypatch.setattr(ctx, "http", http)
     return sent
 
@@ -152,7 +155,9 @@ async def test_a_real_client_sends_nothing_to_another_port(
     results = {"assets": {"result": {"href": f"http://127.0.0.1:{outside.port}/stolen"}}}
     service = await listeners(json.dumps(results).encode())
     config = ClimateConnectionConfig(
-        base_url=f"http://127.0.0.1:{service.port}/ocs", headers={"X-Proxy-Key": "dummy-key"}
+        base_url=f"http://127.0.0.1:{service.port}/ocs",
+        credential=SecretStr("dummy-key"),
+        credential_header="X-Proxy-Key",
     )
 
     def http(ref: str) -> httpx2.AsyncClient:
