@@ -36,7 +36,12 @@
 # Leone demo database; THE NOTIFY STEP SENDS REAL MESSAGES to whoever the DHIS2 behind
 # `dhis2-local` assigns to it.
 #
-#   dg run --local src/dirigent_contrib/chap/shelves/chap-dhis2/chap-predict-alert-review-notify.yaml \
+# The document carries no credential. It names the dhis2 connection dhis2-local, which the
+# instance holds: create it once, and the command asks how to sign in.
+#
+#   dg connection create dhis2 dhis2-local --set base_url=http://localhost:8080
+#
+#   dg run src/dirigent_contrib/chap/shelves/chap-dhis2/chap-predict-alert-review-notify.yaml \
 #     -p prediction_setup_id=1 -p alert_policy_id=1
 #
 # TO MAKE IT YOURS: a copy names `chap-local` and `dhis2-local` under requires.connections
@@ -64,6 +69,8 @@ requires:
     - chap.alerts.record
     - chap.alerts.reviewed
     - dhis2.message
+  connections:
+    - dhis2-local
 
 params:
   type: object
@@ -98,14 +105,6 @@ connections:
     description: A chap-core server started with docker compose up, on its default port, without auth.
     config:
       base_url: http://localhost:8000
-  dhis2-local:
-    name: Local DHIS2
-    kind: dhis2
-    description: A DHIS2 on its default port with the Sierra Leone demo database, signed in with its demo login.
-    config:
-      base_url: http://localhost:8080
-      basic_username: admin
-      basic_password: district
 
 steps:
   forecast:
